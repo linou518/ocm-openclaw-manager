@@ -45,7 +45,7 @@ class BackupEngine:
             backup_log.append(f"开始备份节点: {node_id}")
             
             host = node_info["host_ip"]
-            port = node_info["ssh_port"]
+            port = node_info.get("ssh_port", 22)
             username = node_info["ssh_user"]
             
             # 1. 备份OpenClaw主配置文件
@@ -197,7 +197,7 @@ class BackupEngine:
             # 4. 停止目标节点OpenClaw服务
             restore_log.append("停止目标节点OpenClaw服务...")
             host = node_info["host_ip"]
-            port = node_info["ssh_port"]
+            port = node_info.get("ssh_port", 22)
             username = node_info["ssh_user"]
             
             stop_result = self.ssh_manager.execute_command(
