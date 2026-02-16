@@ -519,17 +519,17 @@ function NodeDetail() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <div className="text-sm text-gray-400">CPU 使用率</div>
-            <div className="text-2xl font-bold text-white">{node.cpu_usage}%</div>
+            <div className="text-2xl font-bold text-white">{node.cpu_usage || 0}%</div>
           </div>
           <div>
             <div className="text-sm text-gray-400">RAM 使用率</div>
-            <div className="text-2xl font-bold text-white">{node.ram_usage}%</div>
+            <div className="text-2xl font-bold text-white">{node.ram_usage || 0}%</div>
           </div>
           <div>
             <div className="text-sm text-gray-400">智力评分</div>
             <div className={`text-2xl font-bold ${
-              node.last_score >= 90 ? 'text-green-400' :
-              node.last_score >= 70 ? 'text-yellow-400' :
+              (node.last_score || 0) >= 90 ? 'text-green-400' :
+              (node.last_score || 0) >= 70 ? 'text-yellow-400' :
               'text-red-400'
             }`}>
               🧠 {node.last_score || '-'}
@@ -580,19 +580,19 @@ function NodeDetail() {
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-400">IP 地址:</span>
-                    <span className="text-white">{node.host}</span>
+                    <span className="text-white">{node.host || "未知"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">SSH 端口:</span>
-                    <span className="text-white">{node.port}</span>
+                    <span className="text-white">{node.port || 22}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">SSH 用户:</span>
-                    <span className="text-white">{node.ssh_user}</span>
+                    <span className="text-white">{node.ssh_user || "unknown"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">OpenClaw 路径:</span>
-                    <span className="text-xs text-white break-all">{node.openclaw_path}</span>
+                    <span className="text-xs text-white break-all">{node.openclaw_path || "/home/user/.openclaw"}</span>
                   </div>
                 </div>
               </div>
