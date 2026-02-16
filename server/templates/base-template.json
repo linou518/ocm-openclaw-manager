@@ -1,0 +1,56 @@
+{
+  "name": "OpenClaw Base Template",
+  "version": "1.0.0",
+  "description": "Standard OpenClaw configuration for new nodes",
+  "created_at": "2026-02-15T10:54:45.219Z",
+  "files": {
+    "openclaw.json": {
+      "gateway": {
+        "port": 18789,
+        "bind": "loopback",
+        "mode": "local",
+        "auth": {
+          "token": "REPLACE_WITH_UNIQUE_TOKEN"
+        }
+      },
+      "agents": {
+        "list": [
+          {
+            "id": "main",
+            "workspace": "~/.openclaw/workspace-main",
+            "default": true
+          }
+        ],
+        "defaults": {
+          "heartbeat": {
+            "every": "30m",
+            "prompt": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."
+          }
+        }
+      },
+      "channels": {
+        "telegram": {
+          "enabled": true,
+          "accounts": []
+        }
+      },
+      "bindings": []
+    },
+    "auth-profiles.json": {
+      "version": 1,
+      "profiles": {
+        "anthropic": {
+          "provider": "anthropic",
+          "apiKey": "REPLACE_WITH_API_KEY",
+          "lastGood": null,
+          "errorCount": 0
+        }
+      }
+    },
+    "workspace-main/SOUL.md": "# SOUL.md - Who You Are\n\n## Core\nI am an OpenClaw AI assistant running on this node.\n\n## Style\n- Be helpful and efficient\n- Provide accurate technical information\n- Maintain professional but friendly tone\n\n## Mission\nAssist users with their requests while maintaining system stability and security.\n",
+    "workspace-main/MEMORY.md": "# MEMORY.md - Long-Term Memory\n\nThis is your persistent memory file. Record important decisions, learnings, and context here.\n\n## Initial Setup\n- Created from base template\n- Ready for customization\n",
+    "workspace-main/USER.md": "# USER.md - About the User\n\n- **Name:** To be configured\n- **Timezone:** To be configured\n- **Preferences:** To be configured\n",
+    "workspace-main/AGENTS.md": "# AGENTS.md - Your Workspace\n\n## First Run\nConfigure your identity and user preferences in the respective files.\n\n## Memory\nUse MEMORY.md for long-term context and memory/YYYY-MM-DD.md for daily logs.\n",
+    "workspace-main/TOOLS.md": "# TOOLS.md - Local Configuration\n\nRecord your local tool configurations and environment-specific settings here.\n"
+  }
+}

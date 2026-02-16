@@ -1,0 +1,550 @@
+/**
+ * 增强的Bot创建API - 包含节点健康检查
+ * 确保只有健康节点才能创建Bot
+ */
+
+const express = require('express');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const fs = require('fs');
+const path = require('path');
+
+const execAsync = promisify(exec);
+
+class EnhancedBotCreationAPI {
+    constructor(db) {
+        this.db = db;
+        this.router = express.Router();
+        this.setupRoutes();
+    }
+    
+    setupRoutes() {
+            // 专业配置API
+        this.router.get("/api/professions", this.getProfessions.bind(this));
+        
+            // 1. 节点健康检查API
+        this.router.get('/api/nodes/:nodeId/health', this.checkNodeHealth.bind(this));
+        
+        // 2. 节点Bot添加资格检查
+        this.router.get('/api/nodes/:nodeId/bot-ready', this.checkBotReady.bind(this));
+        
+        // 3. 增强的Bot创建API (替换原有的)
+        this.router.post('/api/create-bot-enhanced', this.createBotEnhanced.bind(this));
+        
+        // 4. 批量节点健康状态
+        this.router.get('/api/nodes/health/summary', this.getHealthSummary.bind(this));
+        
+        // 5. 触发节点健康检查
+        this.router.post('/api/nodes/:nodeId/health-check', this.triggerHealthCheck.bind(this));
+    }
+    
+    async checkNodeHealth(req, res) {
+        try {
+            const { nodeId } = req.params;
+            
+            // 获取节点信息
+            const node = this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+            if (!node) {
+                return res.status(404).json({ error: '节点不存在' });
+            }
+            
+            // 执行健康检查
+            const healthResult = await this.performHealthCheck(node);
+            
+            // 更新数据库
+            this.updateNodeHealth(nodeId, healthResult);
+            
+            res.json({
+                success: true,
+                node: {
+                    id: node.id,
+                    name: node.name,
+                    host: node.host
+                },
+                health: healthResult,
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('健康检查失败:', error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+    
+    async checkBotReady(req, res) {
+        try {
+            const { nodeId } = req.params;
+            
+            // 获取节点信息
+            const node = this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+            if (!node) {
+                return res.status(404).json({ 
+                    ready: false, 
+                    reason: '节点不存在' 
+                });
+            }
+            
+            // 检查节点状态
+            const readyCheck = await this.isNodeReadyForBot(node);
+            
+            res.json({
+                ready: readyCheck.ready,
+                reason: readyCheck.reason,
+                node: {
+                    id: node.id,
+                    name: node.name,
+                    status: node.status,
+                    last_score: node.last_score,
+                    last_seen_at: node.last_seen_at
+                },
+                requirements: {
+                    min_health_score: 70,
+                    required_status: ['healthy', 'online', 'warning'],
+                    max_age_minutes: 10
+                }
+            });
+            
+        } catch (error) {
+            res.status(500).json({ 
+                ready: false, 
+                reason: `检查失败: ${error.message}` 
+            });
+        }
+    }
+    
+    async createBotEnhanced(req, res) {
+        try {
+            const botData = req.body;
+            console.log(`🤖 开始创建Bot: ${botData.bot_name} (增强版)`);
+            
+            // 1. 参数验证
+            const validationResult = this.validateBotData(botData);
+            if (!validationResult.valid) {
+                return res.status(400).json({ 
+                    success: false,
+                    error: `参数验证失败: ${validationResult.error}` 
+                });
+            }
+            
+            // 2. 节点健康检查
+            const nodeId = this.getNodeIdByServer(botData.target_server);
+            if (!nodeId) {
+                return res.status(400).json({
+                    success: false,
+                    error: `未知的目标服务器: ${botData.target_server}`
+                });
+            }
+            
+            const node = this.db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+            const readyCheck = await this.isNodeReadyForBot(node);
+            
+            if (!readyCheck.ready) {
+                return res.status(400).json({
+                    success: false,
+                    error: `节点未准备就绪: ${readyCheck.reason}`,
+                    node_status: {
+                        name: node.name,
+                        status: node.status,
+                        health_score: node.last_score,
+                        last_check: node.last_seen_at
+                    }
+                });
+            }
+            
+            console.log(`✅ 节点健康检查通过: ${node.name}`);
+            
+            // 3. 生成Bot配置
+            const configResult = await this.generateBotConfig(botData);
+            if (!configResult.success) {
+                return res.status(500).json({
+                    success: false,
+                    error: `配置生成失败: ${configResult.error}`
+                });
+            }
+            
+            console.log(`✅ Bot配置生成完成: ${configResult.bundle_path}`);
+            
+            // 4. 部署到目标节点
+            const deployResult = await this.deployBotToNode(configResult.bundle_path, node);
+            if (!deployResult.success) {
+                return res.status(500).json({
+                    success: false,
+                    error: `部署失败: ${deployResult.error}`,
+                    config_path: configResult.bundle_path
+                });
+            }
+            
+            console.log(`✅ Bot部署完成: ${botData.bot_name}`);
+            
+            // 5. 写入数据库
+            const dbResult = this.saveBotToDatabase(botData, nodeId, {
+                config_path: configResult.bundle_path,
+                deploy_details: deployResult.details
+            });
+            
+            // 6. 验证Bot运行状态
+            const verifyResult = await this.verifyBotDeployment(botData, node);
+            
+            res.json({
+                success: true,
+                message: `✅ Bot ${botData.display_name || botData.bot_name} 创建成功`,
+                bot: {
+                    id: dbResult.bot_id,
+                    name: botData.bot_name,
+                    display_name: botData.display_name,
+                    profession: botData.profession || 'general',
+                    node: node.name,
+                    status: verifyResult.running ? 'running' : 'created'
+                },
+                deployment: {
+                    config_path: configResult.bundle_path,
+                    deployed_at: new Date().toISOString(),
+                    verification: verifyResult
+                },
+                features: [
+                    '✅ 基于Joe模板，继承核心技能',
+                    '✅ 专业化配置已应用',
+                    '✅ 已去除个人信息',
+                    '✅ 配置包已生成并部署',
+                    '✅ 已写入数据库',
+                    '✅ 节点健康检查通过'
+                ]
+            });
+            
+        } catch (error) {
+            console.error('Bot创建失败:', error);
+            res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        }
+    }
+    
+    async getHealthSummary(req, res) {
+        try {
+            const nodes = this.db.prepare(`
+                SELECT id, name, status, last_score, last_seen_at, cpu_usage, ram_usage, disk_usage
+                FROM nodes 
+                ORDER BY last_score DESC
+            `).all();
+            
+            const summary = {
+                total_nodes: nodes.length,
+                healthy_nodes: nodes.filter(n => n.status === 'healthy').length,
+                warning_nodes: nodes.filter(n => n.status === 'warning').length,
+                offline_nodes: nodes.filter(n => n.status === 'offline').length,
+                avg_health_score: nodes.reduce((sum, n) => sum + (n.last_score || 0), 0) / nodes.length,
+                nodes: nodes.map(node => ({
+                    id: node.id,
+                    name: node.name,
+                    status: node.status,
+                    health_score: node.last_score,
+                    bot_ready: this.isNodeHealthy(node),
+                    last_check: node.last_seen_at ? new Date(node.last_seen_at).toISOString() : null,
+                    resources: {
+                        cpu: node.cpu_usage,
+                        memory: node.ram_usage,
+                        disk: node.disk_usage
+                    }
+                }))
+            };
+            
+            res.json(summary);
+            
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+    
+    async triggerHealthCheck(req, res) {
+        try {
+            const { nodeId } = req.params;
+            
+            // 异步触发健康检查
+            console.log(`🔍 触发节点健康检查: ${nodeId}`);
+            
+            // 调用Python健康监控脚本
+            const { stdout, stderr } = await execAsync(`python3 ${__dirname}/node-health-monitor.py ready ${nodeId}`);
+            
+            if (stderr) {
+                console.error('健康检查警告:', stderr);
+            }
+            
+            const result = JSON.parse(stdout);
+            
+            res.json({
+                success: true,
+                message: '健康检查已触发',
+                result: result
+            });
+            
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        }
+    }
+    
+    // --- 辅助方法 ---
+    
+    validateBotData(botData) {
+        const required = ['bot_name', 'bot_token', 'target_server'];
+        const missing = required.filter(field => !botData[field]);
+        
+        if (missing.length > 0) {
+            return { 
+                valid: false, 
+                error: `缺少必要参数: ${missing.join(', ')}` 
+            };
+        }
+        
+        // Bot名称格式检查
+        if (!botData.bot_name.startsWith('@')) {
+            return { 
+                valid: false, 
+                error: 'Bot名称必须以@开头' 
+            };
+        }
+        
+        return { valid: true };
+    }
+    
+    async isNodeReadyForBot(node) {
+        if (!node) {
+            return { ready: false, reason: '节点不存在' };
+        }
+        
+        // 检查节点状态
+        const validStatuses = ['healthy', 'online', 'warning'];
+        if (!validStatuses.includes(node.status)) {
+            return { 
+                ready: false, 
+                reason: `节点状态不健康: ${node.status}` 
+            };
+        }
+        
+        // 检查健康分数
+        const minScore = 70;
+        if ((node.last_score || 0) < minScore) {
+            return { 
+                ready: false, 
+                reason: `健康分数过低: ${node.last_score || 0}/${minScore}` 
+            };
+        }
+        
+        // 检查最近检查时间 (10分钟内)
+        const maxAge = 10 * 60 * 1000; // 10分钟
+        const now = Date.now();
+        const lastSeen = node.last_seen_at || 0;
+        
+        if (now - lastSeen > maxAge) {
+            return { 
+                ready: false, 
+                reason: '节点状态过期，建议触发健康检查' 
+            };
+        }
+        
+        return { ready: true };
+    }
+    
+    isNodeHealthy(node) {
+        const check = this.isNodeReadyForBot(node);
+        return check.ready;
+    }
+    
+    getNodeIdByServer(serverName) {
+        const serverMap = {
+            'pc-a': ['pc-a', 'PC-A', '192.168.3.73'],
+            't440': ['t440', 'T440', '192.168.3.33'],
+            'baota': ['baota', 'Baota', '192.168.3.11'],
+            'pc-b': ['pc-b', 'PC-B', '192.168.3.17']
+        };
+        
+        for (const [key, aliases] of Object.entries(serverMap)) {
+            if (aliases.some(alias => alias.toLowerCase() === serverName.toLowerCase())) {
+                const node = this.db.prepare('SELECT id FROM nodes WHERE LOWER(name) LIKE ?').get(`%${key}%`);
+                return node ? node.id : null;
+            }
+        }
+        return null;
+    }
+    
+    async generateBotConfig(botData) {
+        try {
+            const botInfoJson = JSON.stringify(botData);
+            const { stdout, stderr } = await execAsync(
+                `cd /home/linou/shared/ocm-project/server && python3 create_bot_api.py '${botInfoJson}'`
+            );
+            
+            if (stderr) {
+                console.error('配置生成警告:', stderr);
+            }
+            
+            // 提取配置包路径
+            const bundlePath = stdout.match(/CONFIG_BUNDLE_PATH:(.+)/)?.[1]?.trim();
+            if (!bundlePath) {
+                return { success: false, error: '无法获取配置包路径' };
+            }
+            
+            return { success: true, bundle_path: bundlePath };
+            
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
+    }
+    
+    async deployBotToNode(bundlePath, node) {
+        try {
+            console.log(`🚀 开始部署到节点: ${node.name} (${node.host})`);
+            
+            // 执行部署脚本
+            const deployCmd = `cd ${bundlePath} && chmod +x deploy.sh && ./deploy.sh`;
+            const { stdout, stderr } = await execAsync(deployCmd, { timeout: 300000 }); // 5分钟超时
+            
+            if (stderr && !stderr.includes('Warning')) {
+                console.error('部署警告:', stderr);
+            }
+            
+            return {
+                success: true,
+                details: {
+                    output: stdout,
+                    warnings: stderr || null,
+                    deployed_at: new Date().toISOString()
+                }
+            };
+            
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+    
+    saveBotToDatabase(botData, nodeId, deployInfo) {
+        try {
+            const result = this.db.prepare(`
+                INSERT INTO bots (node_id, bot_name, bot_token, platform, workspace_path, model, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                nodeId,
+                botData.bot_name,
+                botData.bot_token,
+                'telegram',
+                `/home/${this.getServerUser(botData.target_server)}/.openclaw/workspace-${botData.bot_name.replace('@', '').replace('_bot', '')}`,
+                botData.model || 'claude-sonnet-4',
+                'deployed',
+                Date.now()
+            );
+            
+            console.log(`✅ Bot已写入数据库，ID: ${result.lastInsertRowid}`);
+            
+            return { bot_id: result.lastInsertRowid };
+            
+        } catch (error) {
+            console.error('数据库写入失败:', error);
+            return { bot_id: null, error: error.message };
+        }
+    }
+    
+    getServerUser(serverName) {
+        const userMap = {
+            'pc-a': 'openclaw01',
+            'pc-b': 'openclaw02',
+            't440': 'linou',
+            'baota': 'linou'
+        };
+        return userMap[serverName.toLowerCase()] || 'linou';
+    }
+    
+    async verifyBotDeployment(botData, node) {
+        try {
+            // 等待一段时间让服务启动
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            
+            // 检查OpenClaw进程
+            const { stdout } = await execAsync(`ssh ${this.getServerUser(botData.target_server)}@${node.host} "ps aux | grep openclaw | grep -v grep"`);
+            
+            return {
+                running: stdout.includes('openclaw'),
+                process_info: stdout,
+                verified_at: new Date().toISOString()
+            };
+            
+        } catch (error) {
+            return {
+                running: false,
+                error: error.message,
+                verified_at: new Date().toISOString()
+            };
+        }
+    }
+    
+    async performHealthCheck(node) {
+        // 调用Python健康监控脚本的单次检查
+        try {
+            const { stdout } = await execAsync(`python3 ${__dirname}/node-health-monitor.py check`);
+            return JSON.parse(stdout);
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                score: 0
+            };
+        }
+    }
+    
+    updateNodeHealth(nodeId, healthResult) {
+        if (healthResult.success) {
+            this.db.prepare(`
+                UPDATE nodes 
+                SET status = ?, last_score = ?, last_seen_at = ?, cpu_usage = ?, ram_usage = ?, disk_usage = ?
+                WHERE id = ?
+            `).run(
+                healthResult.status || 'unknown',
+                healthResult.score || 0,
+                Date.now(),
+                healthResult.cpu_usage || 0,
+                healthResult.memory_usage || 0,
+                healthResult.disk_usage || 0,
+                nodeId
+            );
+        }
+    }
+    
+        // 获取专业化选项
+    getProfessions(req, res) {
+        const professions = [
+            {
+                id: "game-dev",
+                name: "游戏开发专家",
+                description: "Unity、Unreal Engine、游戏设计",
+                icon: "🎮",
+                skills: ["Unity开发", "C#编程", "游戏设计", "性能优化"]
+            },
+            {
+                id: "data-eng", 
+                name: "数据工程专家",
+                description: "数据管道、ETL、大数据处理",
+                icon: "📊",
+                skills: ["Python", "SQL", "Spark", "数据建模"]
+            },
+            {
+                id: "general",
+                name: "通用助理",
+                description: "全能AI助理，适用于各种任务",
+                icon: "🤖",
+                skills: ["通用对话", "任务协助", "信息查询", "文档处理"]
+            }
+        ];
+        res.json({ professions });
+    }
+
+    getRouter() {
+        return this.router;
+    }
+}
+
+module.exports = EnhancedBotCreationAPI;

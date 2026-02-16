@@ -1,0 +1,163 @@
+import React, { useState } from 'react';
+
+function AddBotModal({ isOpen, onClose, onSuccess, nodeId }) {
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    bot_name: '',
+    bot_token: '',
+    platform: 'telegram',
+    workspace_path: '',
+    model: 'anthropic/claude-sonnet-4-5',
+    openclaw_url: ''
+  });
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      const res = await fetch(`/api/nodes/${nodeId}/bots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      
+      if (!res.ok) throw new Error('Failed to add bot');
+      
+      const newBot = await res.json();
+      alert(`✅ Bot ${newBot.bot_name} 添加成功！`);
+      onSuccess();
+      onClose();
+      setFormData({
+        bot_name: '',
+        bot_token: '',
+        platform: 'telegram',
+        workspace_path: '',
+        model: 'anthropic/claude-sonnet-4-5',
+        openclaw_url: ''
+      });
+    } catch (error) {
+      alert('❌ 添加失败: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-white">添加 Bot</h3>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white text-2xl leading-none"
+            >
+              ×
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Bot 名称 *</label>
+              <input
+                type="text"
+                value={formData.bot_name}
+                onChange={(e) => setFormData({ ...formData, bot_name: e.target.value })}
+                placeholder="例: @my_agent_bot"
+                required
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Bot Token *</label>
+              <input
+                type="password"
+                value={formData.bot_token}
+                onChange={(e) => setFormData({ ...formData, bot_token: e.target.value })}
+                placeholder="从 BotFather 获取"
+                required
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">平台</label>
+              <select
+                value={formData.platform}
+                onChange={(e) => setFormData({ ...formData, platform: e.target.value })}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="telegram">Telegram</option>
+                <option value="discord">Discord</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="slack">Slack</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">Workspace 路径 *</label>
+              <input
+                type="text"
+                value={formData.workspace_path}
+                onChange={(e) => setFormData({ ...formData, workspace_path: e.target.value })}
+                placeholder="例: ~/.openclaw/workspaces/agent1"
+                required
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">默认模型</label>
+              <select
+                value={formData.model}
+                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5</option>
+                <option value="anthropic/claude-opus-4-6">Claude Opus 4</option>
+                <option value="openai/gpt-4">GPT-4</option>
+                <option value="openai/gpt-4o">GPT-4o</option>
+                <option value="google/gemini-2-0">Gemini 2.0</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-white mb-2">OpenClaw URL（可选）</label>
+              <input
+                type="text"
+                value={formData.openclaw_url}
+                onChange={(e) => setFormData({ ...formData, openclaw_url: e.target.value })}
+                placeholder="例: http://localhost:3000"
+                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-700">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 min-w-[100px]"
+              >
+                {loading ? '添加中...' : '添加 Bot'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default AddBotModal;

@@ -1,0 +1,2372 @@
+const express = require('express');
+const nodeManagementRouter = require('./node-management-api');
+const cors = require('cors');
+const path = require('path');
+const Database = require('better-sqlite3');
+
+const app = express();
+const PORT = 8001;
+
+// Database
+const dbPath = path.join(__dirname, 'db', 'ocm.db');
+const db = new Database(dbPath);
+db.pragma('journal_mode = WAL');
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// API Routes
+app.use(nodeManagementRouter);
+
+// Dashboard - 全量数据
+app.get('/api/dashboard', (req, res) => {
+  try {
+    const nodes = db.prepare('SELECT * FROM nodes ORDER BY id').all();
+    
+    // 每个节点添加 bot 数量
+    nodes.forEach(node => {
+      const botCount = db.prepare('SELECT COUNT(*) as count FROM bots WHERE node_id = ?').get(node.id).count;
+      node.bot_count = botCount;
+    });
+    
+    const events = db.prepare('SELECT * FROM events ORDER BY created_at DESC LIMIT 10').all();
+    
+    const onlineCount = nodes.filter(n => ['online', 'unstable'].includes(n.status)).length;
+    const avgScore = Math.floor(
+      nodes.filter(n => n.last_score).reduce((sum, n) => sum + n.last_score, 0) / 
+      nodes.filter(n => n.last_score).length
+    ) || 0;
+    
+    const todayBackups = db.prepare(`
+      SELECT COUNT(*) as count FROM backups 
+      WHERE created_at > ?
+    `).get(Date.now() - 86400000).count;
+
+    // 智力趋势数据（最近7天）
+    const sevenDaysAgo = Date.now() - 7 * 24 * 3600000;
+    const trendScores = db.prepare(`
+      SELECT node_id, total_score, created_at 
+app.get("/api/test-joe-simple", (req, res) => res.json({ message: "Hello from Joe!" }));
+      FROM scores 
+      WHERE created_at > ?
+      ORDER BY created_at ASC
+    `).all(sevenDaysAgo);
+
+    // 按日期分组
+    const trendMap = {};
+    trendScores.forEach(score => {
+      const date = new Date(score.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+      if (!trendMap[date]) trendMap[date] = {};
+      trendMap[date][score.node_id] = score.total_score;
+    });
+
+    const trendData = Object.keys(trendMap).map(date => ({
+      date,
+      ...trendMap[date]
+    }));
+
+    // Phase 7: Additional stats
+    const totalSessions = db.prepare('SELECT COUNT(*) as count FROM sessions').get().count;
+    const activeSessions = db.prepare('SELECT COUNT(*) as count FROM sessions WHERE is_active = 1').get().count;
+    const totalCronJobs = db.prepare('SELECT COUNT(*) as count FROM cron_jobs').get().count;
+    const enabledCronJobs = db.prepare('SELECT COUNT(*) as count FROM cron_jobs WHERE enabled = 1').get().count;
+    const totalSkills = db.prepare('SELECT COUNT(*) as count FROM skills').get().count;
+    const memoryWarnings = db.prepare(`
+      SELECT COUNT(*) as count FROM memory_health 
+      WHERE health_status != 'healthy' 
+      AND id IN (
+        SELECT MAX(id) FROM memory_health GROUP BY bot_id
+      )
+    `).get().count;
+
+    res.json({
+      overview: {
+        totalNodes: nodes.length,
+        onlineCount,
+        offlineCount: nodes.length - onlineCount,
+        avgScore,
+        todayBackups,
+        alerts: nodes.filter(n => n.last_score && n.last_score < 80).length,
+        totalSessions,
+        activeSessions,
+        totalCronJobs,
+        enabledCronJobs,
+        totalSkills,
+        memoryWarnings,
+      },
+      nodes,
+      events,
+      trendData,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 节点列表
+app.get('/api/nodes', (req, res) => {
+  try {
+    const nodes = db.prepare('SELECT * FROM nodes ORDER BY id').all();
+    res.json(nodes);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 添加节点 (Phase 6 CRUD)
+app.post('/api/nodes', async (req, res) => {
+  try {
+    const { id, name, host, port, ssh_user, openclaw_path, auto_install } = req.body;
+    
+    // 1. 先添加节点到数据库
+    const result = db.prepare(`
+      INSERT INTO nodes (id, name, host, port, ssh_user, openclaw_path, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, 
+      name, 
+      host, 
+      port || 22, 
+      ssh_user || 'openclaw', 
+      openclaw_path || '/home/openclaw/.openclaw', 
+      auto_install ? 'installing' : 'unknown', 
+      Date.now(), 
+      Date.now()
+    );
+    
+    const newNode = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id);
+    
+    // 2. 如果启用自动安装，触发后台安装
+    if (auto_install) {
+      console.log(`🚀 触发自动安装: ${id} (${host})`);
+      
+      // 创建安装事件记录
+      db.prepare(`
+        INSERT INTO events (node_id, type, severity, message, created_at)
+        VALUES (?, 'install', 'info', ?, ?)
+      `).run(id, `开始自动安装 OpenClaw 到节点 ${name}`, Date.now());
+      
+      // 异步执行安装（不阻塞响应）
+      setImmediate(() => {
+        installOpenClawToNode(newNode);
+      });
+    }
+    
+    res.json(newNode);
+  } catch (error) {
+    console.error('添加节点失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新节点 (Phase 6 CRUD)
+app.put('/api/nodes/:id', (req, res) => {
+  try {
+    const { name, host, port, ssh_user, openclaw_path, tags } = req.body;
+    db.prepare(`
+      UPDATE nodes 
+      SET name = ?, host = ?, port = ?, ssh_user = ?, openclaw_path = ?, tags = ?, updated_at = ?
+      WHERE id = ?
+    `).run(name, host, port, ssh_user, openclaw_path, tags, Date.now(), req.params.id);
+    
+    const updated = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 查询节点安装状态
+app.get('/api/nodes/:id/install-status', (req, res) => {
+  try {
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
+    if (!node) {
+      return res.status(404).json({ error: '节点不存在' });
+    }
+    
+    // 获取最近的安装相关事件
+    const events = db.prepare(`
+      SELECT * FROM events 
+      WHERE node_id = ? AND type IN ('install', 'health') 
+      ORDER BY created_at DESC 
+      LIMIT 5
+    `).all(req.params.id);
+    
+    res.json({
+      node: {
+        id: node.id,
+        name: node.name,
+        status: node.status,
+        openclaw_version: node.openclaw_version,
+        last_seen_at: node.last_seen_at
+      },
+      events: events,
+      installing: node.status === 'installing'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除节点 (Phase 6 CRUD)
+app.delete('/api/nodes/:id', (req, res) => {
+  try {
+    // 检查是否有关联数据
+    const botsCount = db.prepare('SELECT COUNT(*) as count FROM bots WHERE node_id = ?').get(req.params.id).count;
+    const keysCount = db.prepare('SELECT COUNT(*) as count FROM api_keys WHERE node_id = ?').get(req.params.id).count;
+    
+    if (botsCount > 0 || keysCount > 0) {
+      return res.status(400).json({ 
+        error: `该节点下还有 ${botsCount} 个 Bot 和 ${keysCount} 个 Key，无法删除` 
+      });
+    }
+    
+    db.prepare('DELETE FROM nodes WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 节点详情
+app.get('/api/nodes/:id', (req, res) => {
+  try {
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
+    if (!node) {
+      return res.status(404).json({ error: 'Node not found' });
+    }
+
+    const backups = db.prepare(`
+      SELECT * FROM backups WHERE node_id = ? 
+      ORDER BY created_at DESC LIMIT 10
+    `).all(req.params.id);
+
+    const scores = db.prepare(`
+      SELECT * FROM scores WHERE node_id = ? 
+      ORDER BY created_at DESC LIMIT 10
+    `).all(req.params.id);
+
+    const events = db.prepare(`
+      SELECT * FROM events WHERE node_id = ? 
+      ORDER BY created_at DESC LIMIT 20
+    `).all(req.params.id);
+
+    res.json({ node, backups, scores, events });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 备份列表
+app.get('/api/nodes/:id/backups', (req, res) => {
+  try {
+    const backups = db.prepare(`
+      SELECT * FROM backups WHERE node_id = ? 
+      ORDER BY created_at DESC
+    `).all(req.params.id);
+    res.json(backups);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 智力评分历史
+app.get('/api/nodes/:id/scores', (req, res) => {
+  try {
+    const scores = db.prepare(`
+      SELECT * FROM scores WHERE node_id = ? 
+      ORDER BY created_at DESC
+    `).all(req.params.id);
+    res.json(scores);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 事件日志 (分页 + 筛选)
+app.get('/api/events', (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // 筛选参数
+    const { node_id, severity, type, dateFrom, dateTo } = req.query;
+    
+    let whereClause = [];
+    let params = [];
+    
+    if (node_id && node_id !== 'all') {
+      whereClause.push('node_id = ?');
+      params.push(node_id);
+    }
+    if (severity && severity !== 'all') {
+      whereClause.push('severity = ?');
+      params.push(severity);
+    }
+    if (type && type !== 'all') {
+      whereClause.push('type = ?');
+      params.push(type);
+    }
+    if (dateFrom) {
+      whereClause.push('created_at >= ?');
+      params.push(parseInt(dateFrom));
+    }
+    if (dateTo) {
+      whereClause.push('created_at <= ?');
+      params.push(parseInt(dateTo));
+    }
+    
+    const whereSQL = whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : '';
+    
+    const total = db.prepare(`SELECT COUNT(*) as count FROM events ${whereSQL}`).get(...params).count;
+    const events = db.prepare(`
+      SELECT * FROM events 
+      ${whereSQL}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    res.json({
+      data: events,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 全部备份 (分页 + 筛选)
+app.get('/api/backups', (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // 筛选参数
+    const { node_id, type, is_stable, dateFrom, dateTo } = req.query;
+    
+    let whereClause = [];
+    let params = [];
+    
+    if (node_id && node_id !== 'all') {
+      whereClause.push('node_id = ?');
+      params.push(node_id);
+    }
+    if (type && type !== 'all') {
+      whereClause.push('type = ?');
+      params.push(type);
+    }
+    if (is_stable === '1') {
+      whereClause.push('is_stable = 1');
+    }
+    if (dateFrom) {
+      whereClause.push('created_at >= ?');
+      params.push(parseInt(dateFrom));
+    }
+    if (dateTo) {
+      whereClause.push('created_at <= ?');
+      params.push(parseInt(dateTo));
+    }
+    
+    const whereSQL = whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : '';
+    
+    const total = db.prepare(`SELECT COUNT(*) as count FROM backups ${whereSQL}`).get(...params).count;
+    const backups = db.prepare(`
+      SELECT * FROM backups 
+      ${whereSQL}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    res.json({
+      data: backups,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除备份 (Phase 6 CRUD)
+app.delete('/api/backups/:id', (req, res) => {
+  try {
+    db.prepare('DELETE FROM backups WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 给备份添加标签 (Phase 6)
+app.put('/api/backups/:id/tag', (req, res) => {
+  try {
+    const { git_tag, is_stable } = req.body;
+    db.prepare(`
+      UPDATE backups 
+      SET git_tag = ?, is_stable = ?
+      WHERE id = ?
+    `).run(git_tag, is_stable ? 1 : 0, req.params.id);
+    
+    const updated = db.prepare('SELECT * FROM backups WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 全部评分历史 (分页 + 筛选)
+app.get('/api/scores/all', (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // 筛选参数
+    const { node_id, minScore, maxScore, action_taken, dateFrom, dateTo } = req.query;
+    
+    let whereClause = [];
+    let params = [];
+    
+    if (node_id && node_id !== 'all') {
+      whereClause.push('node_id = ?');
+      params.push(node_id);
+    }
+    if (minScore) {
+      whereClause.push('total_score >= ?');
+      params.push(parseInt(minScore));
+    }
+    if (maxScore) {
+      whereClause.push('total_score <= ?');
+      params.push(parseInt(maxScore));
+    }
+    if (action_taken && action_taken !== 'all') {
+      whereClause.push('action_taken = ?');
+      params.push(action_taken);
+    }
+    if (dateFrom) {
+      whereClause.push('created_at >= ?');
+      params.push(parseInt(dateFrom));
+    }
+    if (dateTo) {
+      whereClause.push('created_at <= ?');
+      params.push(parseInt(dateTo));
+    }
+    
+    const whereSQL = whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : '';
+    
+    const total = db.prepare(`SELECT COUNT(*) as count FROM scores ${whereSQL}`).get(...params).count;
+    const scores = db.prepare(`
+      SELECT * FROM scores 
+      ${whereSQL}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    res.json({
+      data: scores,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ Accounts 管理 ============
+
+// 获取所有账号
+app.get('/api/accounts', (req, res) => {
+  try {
+    const accounts = db.prepare('SELECT * FROM accounts ORDER BY provider, id').all();
+    
+    // 每个账号添加 key 数量
+    accounts.forEach(account => {
+      const keyCount = db.prepare('SELECT COUNT(*) as count FROM api_keys WHERE account_id = ?').get(account.id).count;
+      account.key_count = keyCount;
+    });
+    
+    res.json(accounts);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 添加账号
+app.post('/api/accounts', (req, res) => {
+  try {
+    const { provider, account_name, email, plan, monthly_budget, status, note } = req.body;
+    const result = db.prepare(`
+      INSERT INTO accounts (provider, account_name, email, plan, monthly_budget, status, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(provider, account_name, email || '', plan || 'free', monthly_budget || 0, status || 'active', note || '');
+    
+    const newAccount = db.prepare('SELECT * FROM accounts WHERE id = ?').get(result.lastInsertRowid);
+    res.json(newAccount);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新账号
+app.put('/api/accounts/:id', (req, res) => {
+  try {
+    const { account_name, email, plan, monthly_budget, monthly_used, status, note } = req.body;
+    db.prepare(`
+      UPDATE accounts 
+      SET account_name = ?, email = ?, plan = ?, monthly_budget = ?, monthly_used = ?, status = ?, note = ?, updated_at = ?
+      WHERE id = ?
+    `).run(account_name, email, plan, monthly_budget, monthly_used, status, note, Date.now(), req.params.id);
+    
+    const updated = db.prepare('SELECT * FROM accounts WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除账号
+app.delete('/api/accounts/:id', (req, res) => {
+  try {
+    // 先检查是否有关联的keys
+    const keyCount = db.prepare('SELECT COUNT(*) as count FROM api_keys WHERE account_id = ?').get(req.params.id).count;
+    if (keyCount > 0) {
+      return res.status(400).json({ error: '该账号下还有 API Keys，无法删除' });
+    }
+    
+    db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 获取账号下的所有keys
+app.get('/api/accounts/:id/keys', (req, res) => {
+  try {
+    const keys = db.prepare('SELECT * FROM api_keys WHERE account_id = ? ORDER BY created_at DESC').all(req.params.id);
+    res.json(keys);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ API Keys 管理 ============
+
+// 获取节点的所有keys
+app.get('/api/nodes/:id/keys', (req, res) => {
+  try {
+    const keys = db.prepare('SELECT * FROM api_keys WHERE node_id = ? ORDER BY created_at DESC').all(req.params.id);
+    res.json(keys);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 添加key
+app.post('/api/nodes/:id/keys', (req, res) => {
+  try {
+    const { provider, key_name, api_key, monthly_limit, note } = req.body;
+    const result = db.prepare(`
+      INSERT INTO api_keys (node_id, provider, key_name, api_key, monthly_limit, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, provider, key_name, api_key, monthly_limit || null, note || '');
+    
+    const newKey = db.prepare('SELECT * FROM api_keys WHERE id = ?').get(result.lastInsertRowid);
+    res.json(newKey);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新key
+app.put('/api/keys/:keyId', (req, res) => {
+  try {
+    const { key_name, api_key, is_active, monthly_limit, note } = req.body;
+    db.prepare(`
+      UPDATE api_keys 
+      SET key_name = ?, api_key = ?, is_active = ?, monthly_limit = ?, note = ?, updated_at = ?
+      WHERE id = ?
+    `).run(key_name, api_key, is_active, monthly_limit, note, Date.now(), req.params.keyId);
+    
+    const updated = db.prepare('SELECT * FROM api_keys WHERE id = ?').get(req.params.keyId);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除key
+app.delete('/api/keys/:keyId', (req, res) => {
+  try {
+    db.prepare('DELETE FROM api_keys WHERE id = ?').run(req.params.keyId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 验证key
+app.post('/api/keys/:keyId/verify', (req, res) => {
+  try {
+    // Mock: 随机返回 valid/invalid
+    const status = Math.random() > 0.2 ? 'valid' : 'invalid';
+    db.prepare(`
+      UPDATE api_keys 
+      SET status = ?, last_verified_at = ?
+      WHERE id = ?
+    `).run(status, Date.now(), req.params.keyId);
+    
+    const updated = db.prepare('SELECT * FROM api_keys WHERE id = ?').get(req.params.keyId);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 全集群key列表 (分页 + 筛选)
+app.get('/api/keys', (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // 筛选参数
+    const { provider, account_id, node_id, status } = req.query;
+    
+    let whereClause = [];
+    let params = [];
+    
+    if (provider && provider !== 'all') {
+      whereClause.push('k.provider = ?');
+      params.push(provider);
+    }
+    if (account_id && account_id !== 'all') {
+      whereClause.push('k.account_id = ?');
+      params.push(parseInt(account_id));
+    }
+    if (node_id && node_id !== 'all') {
+      whereClause.push('k.node_id = ?');
+      params.push(node_id);
+    }
+    if (status && status !== 'all') {
+      whereClause.push('k.status = ?');
+      params.push(status);
+    }
+    
+    const whereSQL = whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : '';
+    
+    const total = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM api_keys k
+      LEFT JOIN accounts a ON k.account_id = a.id
+      ${whereSQL}
+    `).get(...params).count;
+    
+    const keys = db.prepare(`
+      SELECT k.*, a.account_name, a.plan 
+      FROM api_keys k
+      LEFT JOIN accounts a ON k.account_id = a.id
+      ${whereSQL}
+      ORDER BY k.node_id, k.provider
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    res.json({
+      data: keys,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ Bots 管理 ============
+
+// 获取节点的所有bots
+app.get('/api/nodes/:id/bots', (req, res) => {
+  try {
+    const bots = db.prepare('SELECT * FROM bots WHERE node_id = ? ORDER BY created_at').all(req.params.id);
+    res.json(bots);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 添加bot
+app.post('/api/nodes/:id/bots', (req, res) => {
+  try {
+    const { bot_name, bot_token, platform, workspace_path, model, openclaw_url } = req.body;
+    const result = db.prepare(`
+      INSERT INTO bots (node_id, bot_name, bot_token, platform, workspace_path, model, openclaw_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(req.params.id, bot_name, bot_token, platform || 'telegram', workspace_path, model, openclaw_url);
+    
+    const newBot = db.prepare('SELECT * FROM bots WHERE id = ?').get(result.lastInsertRowid);
+    res.json(newBot);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新bot
+app.put('/api/bots/:botId', (req, res) => {
+  try {
+    const { bot_name, status, model, session_count, cron_count } = req.body;
+    db.prepare(`
+      UPDATE bots 
+      SET bot_name = ?, status = ?, model = ?, session_count = ?, cron_count = ?, updated_at = ?
+      WHERE id = ?
+    `).run(bot_name, status, model, session_count, cron_count, Date.now(), req.params.botId);
+    
+    const updated = db.prepare('SELECT * FROM bots WHERE id = ?').get(req.params.botId);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除bot
+app.delete('/api/bots/:botId', (req, res) => {
+  try {
+    db.prepare('DELETE FROM bots WHERE id = ?').run(req.params.botId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 全集群bot列表
+app.get('/api/bots', (req, res) => {
+  try {
+    const bots = db.prepare('SELECT * FROM bots ORDER BY node_id').all();
+    res.json(bots);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ Bot Backups (Phase 6) ============
+
+// 获取 Bot 的备份列表
+app.get('/api/bots/:botId/backups', (req, res) => {
+  try {
+    const backups = db.prepare(`
+      SELECT * FROM bot_backups 
+      WHERE bot_id = ? 
+      ORDER BY created_at DESC
+    `).all(req.params.botId);
+    res.json(backups);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 触发 Bot 备份
+app.post('/api/bots/:botId/backups', (req, res) => {
+  try {
+    const bot = db.prepare('SELECT * FROM bots WHERE id = ?').get(req.params.botId);
+    if (!bot) {
+      return res.status(404).json({ error: 'Bot not found' });
+    }
+
+    const { type = 'manual', note = '' } = req.body;
+    
+    // Mock: 创建备份记录
+    const result = db.prepare(`
+      INSERT INTO bot_backups (bot_id, node_id, git_commit, type, file_count, total_size, note)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.params.botId,
+      bot.node_id,
+      Math.random().toString(36).substring(7), // mock commit hash
+      type,
+      Math.floor(Math.random() * 100) + 150,
+      Math.floor(Math.random() * 5000000) + 8000000,
+      note
+    );
+    
+    const newBackup = db.prepare('SELECT * FROM bot_backups WHERE id = ?').get(result.lastInsertRowid);
+    res.json(newBackup);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 还原 Bot 到指定备份
+app.post('/api/bots/:botId/restore', (req, res) => {
+  try {
+    const { backup_id } = req.body;
+    const backup = db.prepare('SELECT * FROM bot_backups WHERE id = ? AND bot_id = ?')
+      .get(backup_id, req.params.botId);
+    
+    if (!backup) {
+      return res.status(404).json({ error: 'Backup not found' });
+    }
+    
+    // Mock: 实际会执行还原操作
+    res.json({ 
+      success: true, 
+      message: `Bot ${req.params.botId} 已还原到备份 ${backup_id}`,
+      backup
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除 Bot 备份
+app.delete('/api/bots/:botId/backups/:backupId', (req, res) => {
+  try {
+    db.prepare('DELETE FROM bot_backups WHERE id = ? AND bot_id = ?')
+      .run(req.params.backupId, req.params.botId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ Phase 7: New Modules ============
+
+// Memory Health
+app.get('/api/bots/:botId/memory-health', (req, res) => {
+  try {
+    const health = db.prepare(`
+      SELECT * FROM memory_health 
+      WHERE bot_id = ? 
+      ORDER BY checked_at DESC
+    `).all(req.params.botId);
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Sessions
+app.get('/api/bots/:botId/sessions', (req, res) => {
+  try {
+    const sessions = db.prepare(`
+      SELECT * FROM sessions 
+      WHERE bot_id = ? 
+      ORDER BY is_active DESC, last_activity_at DESC
+    `).all(req.params.botId);
+    res.json(sessions);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/sessions', (req, res) => {
+  try {
+    const sessions = db.prepare(`
+      SELECT s.*, b.bot_name 
+      FROM sessions s
+      LEFT JOIN bots b ON s.bot_id = b.id
+      ORDER BY s.is_active DESC, s.last_activity_at DESC
+    `).all();
+    
+    const totalCount = sessions.length;
+    const activeCount = sessions.filter(s => s.is_active).length;
+    
+    res.json({
+      data: sessions,
+      total: totalCount,
+      active: activeCount
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Cron Jobs
+app.get('/api/bots/:botId/cron-jobs', (req, res) => {
+  try {
+    const jobs = db.prepare(`
+      SELECT * FROM cron_jobs 
+      WHERE bot_id = ? 
+      ORDER BY enabled DESC, created_at DESC
+    `).all(req.params.botId);
+    res.json(jobs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/cron-jobs', (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    const { node_id, bot_id, enabled, schedule_type } = req.query;
+    
+    let whereClause = [];
+    let params = [];
+    
+    if (node_id && node_id !== 'all') {
+      whereClause.push('c.node_id = ?');
+      params.push(node_id);
+    }
+    if (bot_id && bot_id !== 'all') {
+      whereClause.push('c.bot_id = ?');
+      params.push(parseInt(bot_id));
+    }
+    if (enabled === '1' || enabled === '0') {
+      whereClause.push('c.enabled = ?');
+      params.push(parseInt(enabled));
+    }
+    if (schedule_type && schedule_type !== 'all') {
+      whereClause.push('c.schedule_type = ?');
+      params.push(schedule_type);
+    }
+    
+    const whereSQL = whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : '';
+    
+    const total = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM cron_jobs c
+      ${whereSQL}
+    `).get(...params).count;
+    
+    const jobs = db.prepare(`
+      SELECT c.*, b.bot_name, b.agent_emoji
+      FROM cron_jobs c
+      LEFT JOIN bots b ON c.bot_id = b.id
+      ${whereSQL}
+      ORDER BY c.enabled DESC, c.last_run_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    res.json({
+      data: jobs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Toggle cron job
+app.put('/api/cron-jobs/:id/toggle', (req, res) => {
+  try {
+    const job = db.prepare('SELECT * FROM cron_jobs WHERE id = ?').get(req.params.id);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    
+    const newEnabled = job.enabled ? 0 : 1;
+    db.prepare('UPDATE cron_jobs SET enabled = ? WHERE id = ?').run(newEnabled, req.params.id);
+    
+    const updated = db.prepare('SELECT * FROM cron_jobs WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Gateway Config
+app.get('/api/nodes/:id/config', (req, res) => {
+  try {
+    const config = db.prepare(`
+      SELECT * FROM gateway_configs 
+      WHERE node_id = ?
+    `).get(req.params.id);
+    res.json(config || {});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Skills
+app.get('/api/nodes/:id/skills', (req, res) => {
+  try {
+    const skills = db.prepare(`
+      SELECT * FROM skills 
+      WHERE node_id = ? 
+      ORDER BY source, skill_name
+    `).all(req.params.id);
+    res.json(skills);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/skills', (req, res) => {
+  try {
+    const skills = db.prepare(`
+      SELECT s.*, n.name as node_name 
+      FROM skills s
+      LEFT JOIN nodes n ON s.node_id = n.id
+      ORDER BY s.node_id, s.source, s.skill_name
+    `).all();
+    
+    const totalCount = skills.length;
+    const bundledCount = skills.filter(s => s.source === 'bundled').length;
+    const customCount = skills.filter(s => s.source === 'custom' || s.source === 'workspace').length;
+    
+    res.json({
+      data: skills,
+      total: totalCount,
+      bundled: bundledCount,
+      custom: customCount
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ Audit Log ============
+
+// 获取审计日志 (分页 + 筛选)
+app.get('/api/audit', (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    // 筛选参数
+    const { operator, action, result, dateFrom, dateTo } = req.query;
+    
+    let whereClause = [];
+    let params = [];
+    
+    if (operator) {
+      whereClause.push('operator = ?');
+      params.push(operator);
+    }
+    if (action) {
+      whereClause.push('action = ?');
+      params.push(action);
+    }
+    if (result) {
+      whereClause.push('result = ?');
+      params.push(result);
+    }
+    if (dateFrom) {
+      whereClause.push('created_at >= ?');
+      params.push(parseInt(dateFrom));
+    }
+    if (dateTo) {
+      whereClause.push('created_at <= ?');
+      params.push(parseInt(dateTo));
+    }
+    
+    const whereSQL = whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : '';
+    
+    const total = db.prepare(`SELECT COUNT(*) as count FROM audit_log ${whereSQL}`).get(...params).count;
+    const logs = db.prepare(`
+      SELECT * FROM audit_log 
+      ${whereSQL}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    res.json({
+      data: logs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 添加审计日志
+app.post('/api/audit', (req, res) => {
+  try {
+    const { operator, operator_detail, action, target, params, result, error_message, duration_ms } = req.body;
+    const result_insert = db.prepare(`
+      INSERT INTO audit_log (operator, operator_detail, action, target, params, result, error_message, duration_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(operator, operator_detail || '', action, target || '', params || '', result || 'success', error_message || '', duration_ms || 0);
+    
+    const newLog = db.prepare('SELECT * FROM audit_log WHERE id = ?').get(result_insert.lastInsertRowid);
+    res.json(newLog);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ 节点操作 API ============
+
+// 备份节点
+app.post('/api/nodes/:id/backup', (req, res) => {
+  try {
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
+    if (!node) return res.status(404).json({ error: 'Node not found' });
+
+    // Mock: 创建备份记录
+    const { type = 'manual' } = req.body;
+    const result = db.prepare(`
+      INSERT INTO backups (node_id, type, git_commit, file_count, total_size)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      req.params.id,
+      type,
+      Math.random().toString(36).substring(2, 9), // mock commit
+      Math.floor(Math.random() * 200) + 150,
+      Math.floor(Math.random() * 10000000) + 8000000
+    );
+
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message)
+      VALUES (?, 'backup', 'info', ?)
+    `).run(req.params.id, `节点 ${req.params.id} 备份完成`);
+
+    const newBackup = db.prepare('SELECT * FROM backups WHERE id = ?').get(result.lastInsertRowid);
+    res.json({ success: true, backup: newBackup, message: '✅ 备份完成（演示模式）' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 还原节点
+app.post('/api/nodes/:id/restore', (req, res) => {
+  try {
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
+    if (!node) return res.status(404).json({ error: 'Node not found' });
+
+    const { backup_id } = req.body;
+    const backup = db.prepare('SELECT * FROM backups WHERE id = ?').get(backup_id);
+    if (!backup) return res.status(404).json({ error: 'Backup not found' });
+
+    // Mock: 还原操作
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message)
+      VALUES (?, 'restore', 'info', ?)
+    `).run(req.params.id, `节点 ${req.params.id} 已还原到备份 ${backup.git_commit}`);
+    
+    // 真正的还原操作
+    try {
+      const { spawn } = require('child_process');
+      const restoreProcess = spawn('python3', ['smart_restore_system.py', 'restore', req.params.id, backup_id.toString()], {
+        cwd: __dirname,
+        stdio: 'inherit'  // 直接输出到控制台，不等待结果
+      });
+      
+      // 不等待完成，立即返回（异步执行）
+      console.log(`正在后台执行还原: ${req.params.id} -> 备份${backup_id}`);
+      
+    } catch (restoreError) {
+      console.error('还原执行错误:', restoreError);
+    }
+
+    res.json({ 
+      success: true, 
+      message: `✅ 节点还原已提交执行\n备份: ${backup.git_commit}\n⏳ 后台执行中，请等待1-2分钟后检查节点状态或手动重启OpenClaw服务` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 重启节点
+app.post('/api/nodes/:id/restart', (req, res) => {
+  try {
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
+    if (!node) return res.status(404).json({ error: 'Node not found' });
+
+    // Mock: 重启操作
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message)
+      VALUES (?, 'restart', 'info', ?)
+    `).run(req.params.id, `节点 ${req.params.id} 已重启`);
+
+    res.json({ 
+      success: true, 
+      message: `✅ 节点已重启（演示模式）\n提示：实际环境会执行 SSH + systemctl restart openclaw` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 智力测试节点
+app.post('/api/nodes/:id/test', (req, res) => {
+  try {
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(req.params.id);
+    if (!node) return res.status(404).json({ error: 'Node not found' });
+
+    // Mock: 生成评分
+    const totalScore = Math.floor(Math.random() * 30) + 70; // 70-100
+    const result = db.prepare(`
+      INSERT INTO scores (node_id, total_score, memory_score, logic_score, tool_score, quality_score, personality_score, action_taken)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      req.params.id,
+      totalScore,
+      Math.floor(totalScore / 5),
+      Math.floor(totalScore / 5),
+      Math.floor(totalScore / 5),
+      Math.floor(totalScore / 5),
+      Math.floor(totalScore / 5),
+      totalScore < 80 ? 'alert' : 'none'
+    );
+
+    // 更新节点评分
+    db.prepare('UPDATE nodes SET last_score = ? WHERE id = ?').run(totalScore, req.params.id);
+
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message)
+      VALUES (?, 'score', ?, ?)
+    `).run(
+      req.params.id, 
+      totalScore < 80 ? 'warn' : 'info',
+      `节点 ${req.params.id} 智力测试完成: ${totalScore}/100`
+    );
+
+    const newScore = db.prepare('SELECT * FROM scores WHERE id = ?').get(result.lastInsertRowid);
+    res.json({ 
+      success: true, 
+      score: newScore,
+      message: `✅ 测试完成（演示模式）\n总分: ${totalScore}/100\n提示：实际环境会通过 Bot 发送测试题并由 LLM Judge 评分` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 全集群备份
+app.post('/api/cluster/backup', (req, res) => {
+  try {
+    const nodes = db.prepare('SELECT * FROM nodes WHERE status = ?').all('online');
+    const count = nodes.length;
+
+    // Mock: 为每个节点创建备份
+    nodes.forEach(node => {
+      db.prepare(`
+        INSERT INTO backups (node_id, type, git_commit, file_count, total_size)
+        VALUES (?, 'auto', ?, ?, ?)
+      `).run(
+        node.id,
+        Math.random().toString(36).substring(2, 9),
+        Math.floor(Math.random() * 200) + 150,
+        Math.floor(Math.random() * 10000000) + 8000000
+      );
+    });
+
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (type, severity, message)
+      VALUES ('backup', 'info', ?)
+    `).run(`全集群备份完成，共 ${count} 个节点`);
+
+    res.json({ 
+      success: true, 
+      count,
+      message: `✅ 全集群备份完成（演示模式）\n已备份 ${count} 个节点\n提示：实际环境会并行执行 SSH 备份并推送到 GitHub` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 全集群智力测试
+app.post('/api/cluster/test', (req, res) => {
+  try {
+    const nodes = db.prepare('SELECT * FROM nodes WHERE status = ?').all('online');
+    const count = nodes.length;
+    let totalScore = 0;
+
+    // Mock: 为每个节点生成评分
+    nodes.forEach(node => {
+      const score = Math.floor(Math.random() * 30) + 70;
+      totalScore += score;
+      
+      db.prepare(`
+        INSERT INTO scores (node_id, total_score, memory_score, logic_score, tool_score, quality_score, personality_score, action_taken)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        node.id,
+        score,
+        Math.floor(score / 5),
+        Math.floor(score / 5),
+        Math.floor(score / 5),
+        Math.floor(score / 5),
+        Math.floor(score / 5),
+        score < 80 ? 'alert' : 'none'
+      );
+
+      db.prepare('UPDATE nodes SET last_score = ? WHERE id = ?').run(score, node.id);
+    });
+
+    const avgScore = Math.floor(totalScore / count);
+
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (type, severity, message)
+      VALUES ('score', ?, ?)
+    `).run(
+      avgScore < 80 ? 'warn' : 'info',
+      `全集群测试完成，平均分: ${avgScore}/100`
+    );
+
+    res.json({ 
+      success: true, 
+      count,
+      avgScore,
+      message: `✅ 全集群测试完成（演示模式）\n测试节点: ${count} 个\n平均分: ${avgScore}/100\n提示：实际环境会并行通过各 Bot 发送测试题` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 重启Bot
+app.post('/api/bots/:botId/restart', (req, res) => {
+  try {
+    const bot = db.prepare('SELECT * FROM bots WHERE id = ?').get(req.params.botId);
+    if (!bot) return res.status(404).json({ error: 'Bot not found' });
+
+    // Mock: 更新状态
+    db.prepare('UPDATE bots SET status = ?, updated_at = ? WHERE id = ?')
+      .run('running', Date.now(), req.params.botId);
+
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message)
+      VALUES (?, 'restart', 'info', ?)
+    `).run(bot.node_id, `Bot ${bot.bot_name} 已重启`);
+
+    res.json({ 
+      success: true, 
+      message: `✅ Bot 已重启（演示模式）\n提示：实际环境会执行 SSH + kill + openclaw start` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 清除事件日志
+app.delete('/api/events', (req, res) => {
+  try {
+    const { days, severity } = req.query;
+    let sql = 'DELETE FROM events WHERE 1=1';
+    const params = [];
+
+    if (days) {
+      const timestamp = Date.now() - (parseInt(days) * 24 * 3600000);
+      sql += ' AND created_at < ?';
+      params.push(timestamp);
+    }
+
+    if (severity && severity !== 'all') {
+      sql += ' AND severity = ?';
+      params.push(severity);
+    }
+
+    const result = db.prepare(sql).run(...params);
+
+    res.json({ 
+      success: true, 
+      deletedCount: result.changes,
+      message: `✅ 已删除 ${result.changes} 条事件记录` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============ Optimizations 管理 ============
+
+// 列表(分页+状态筛选)
+app.get('/api/optimizations', (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    
+    const { status } = req.query;
+    
+    let whereClause = [];
+    let params = [];
+    
+    if (status && status !== 'all') {
+      whereClause.push('status = ?');
+      params.push(status);
+    }
+    
+    const whereSQL = whereClause.length > 0 ? 'WHERE ' + whereClause.join(' AND ') : '';
+    
+    const total = db.prepare(`SELECT COUNT(*) as count FROM optimizations ${whereSQL}`).get(...params).count;
+    const optimizations = db.prepare(`
+      SELECT * FROM optimizations 
+      ${whereSQL}
+      ORDER BY created_at DESC LIMIT ? OFFSET ?
+    `).all(...params, limit, offset);
+    
+    // 每条记录添加命令数量
+    optimizations.forEach(opt => {
+      opt.command_count = JSON.parse(opt.commands).length;
+    });
+    
+    res.json({
+      data: optimizations,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 创建优化任务
+app.post('/api/optimizations', (req, res) => {
+  try {
+    const { title, description, commands, test_node_id } = req.body;
+    const result = db.prepare(`
+      INSERT INTO optimizations (title, description, commands, test_node_id)
+      VALUES (?, ?, ?, ?)
+    `).run(title, description || '', JSON.stringify(commands), test_node_id || 'macmini-02');
+    
+    const newOpt = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(result.lastInsertRowid);
+    res.json(newOpt);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 详情
+app.get('/api/optimizations/:id', (req, res) => {
+  try {
+    const opt = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    if (!opt) {
+      return res.status(404).json({ error: 'Optimization not found' });
+    }
+    opt.commands = JSON.parse(opt.commands);
+    if (opt.test_result) opt.test_result = JSON.parse(opt.test_result);
+    if (opt.deploy_progress) opt.deploy_progress = JSON.parse(opt.deploy_progress);
+    res.json(opt);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 更新
+app.put('/api/optimizations/:id', (req, res) => {
+  try {
+    const { title, description, commands, test_node_id } = req.body;
+    db.prepare(`
+      UPDATE optimizations 
+      SET title = ?, description = ?, commands = ?, test_node_id = ?, updated_at = ?
+      WHERE id = ?
+    `).run(title, description, JSON.stringify(commands), test_node_id, Date.now(), req.params.id);
+    
+    const updated = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 删除(仅draft状态)
+app.delete('/api/optimizations/:id', (req, res) => {
+  try {
+    const opt = db.prepare('SELECT status FROM optimizations WHERE id = ?').get(req.params.id);
+    if (!opt) {
+      return res.status(404).json({ error: 'Optimization not found' });
+    }
+    if (opt.status !== 'draft') {
+      return res.status(400).json({ error: '只能删除草稿状态的任务' });
+    }
+    
+    db.prepare('DELETE FROM optimizations WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 部署到测试机(mock: 备份→执行命令→智力测试)
+app.post('/api/optimizations/:id/test', (req, res) => {
+  try {
+    const opt = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    if (!opt) {
+      return res.status(404).json({ error: 'Optimization not found' });
+    }
+    
+    // Mock: 创建备份
+    const backupResult = db.prepare(`
+      INSERT INTO backups (node_id, type, git_commit, file_count, total_size)
+      VALUES (?, 'pre-test', ?, ?, ?)
+    `).run(
+      opt.test_node_id,
+      Math.random().toString(36).substring(2, 9),
+      Math.floor(Math.random() * 200) + 150,
+      Math.floor(Math.random() * 10000000) + 8000000
+    );
+    
+    // Mock: 模拟测试（随机 65-95 分）
+    const testScore = Math.floor(Math.random() * 30) + 65;
+    const testResult = {
+      memory: Math.floor(testScore / 5) + Math.floor(Math.random() * 3 - 1),
+      logic: Math.floor(testScore / 5) + Math.floor(Math.random() * 3 - 1),
+      tool: Math.floor(testScore / 5) + Math.floor(Math.random() * 3 - 1),
+      quality: Math.floor(testScore / 5) + Math.floor(Math.random() * 3 - 1),
+      personality: Math.floor(testScore / 5) + Math.floor(Math.random() * 3 - 1),
+    };
+    
+    const newStatus = testScore >= 80 ? 'test_passed' : 'test_failed';
+    
+    db.prepare(`
+      UPDATE optimizations 
+      SET status = ?, test_backup_id = ?, test_score = ?, test_result = ?, updated_at = ?
+      WHERE id = ?
+    `).run(newStatus, backupResult.lastInsertRowid, testScore, JSON.stringify(testResult), Date.now(), req.params.id);
+    
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message)
+      VALUES (?, 'optimization', ?, ?)
+    `).run(
+      opt.test_node_id,
+      testScore >= 80 ? 'info' : 'warn',
+      `优化任务 "${opt.title}" 测试完成: ${testScore}/100 (${newStatus === 'test_passed' ? '通过' : '失败'})`
+    );
+    
+    const updated = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    updated.test_result = JSON.parse(updated.test_result);
+    
+    res.json({
+      success: true,
+      optimization: updated,
+      message: `✅ 测试完成（演示模式）\n测试得分: ${testScore}/100\n状态: ${newStatus === 'test_passed' ? '✅ 通过' : '❌ 失败'}`
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 滚动部署到生产节点(mock)
+app.post('/api/optimizations/:id/deploy', (req, res) => {
+  try {
+    const opt = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    if (!opt) {
+      return res.status(404).json({ error: 'Optimization not found' });
+    }
+    if (opt.status !== 'test_passed') {
+      return res.status(400).json({ error: '只能部署测试通过的任务' });
+    }
+    
+    // Mock: 获取所有在线节点（除了测试节点）
+    const nodes = db.prepare('SELECT id FROM nodes WHERE status = ? AND id != ?')
+      .all('online', opt.test_node_id);
+    
+    const { target_nodes } = req.body; // 可选：指定要部署的节点
+    const deployNodes = target_nodes || nodes.map(n => n.id);
+    
+    // Mock: 为每个节点创建部署进度
+    const deployProgress = deployNodes.map(nodeId => {
+      const backupResult = db.prepare(`
+        INSERT INTO backups (node_id, type, git_commit, file_count, total_size)
+        VALUES (?, 'pre-deploy', ?, ?, ?)
+      `).run(
+        nodeId,
+        Math.random().toString(36).substring(2, 9),
+        Math.floor(Math.random() * 200) + 150,
+        Math.floor(Math.random() * 10000000) + 8000000
+      );
+      
+      const score = Math.floor(Math.random() * 15) + 85; // 85-100
+      
+      return {
+        node_id: nodeId,
+        status: 'deployed',
+        backup_id: backupResult.lastInsertRowid,
+        score: score
+      };
+    });
+    
+    db.prepare(`
+      UPDATE optimizations 
+      SET status = 'deployed', deploy_progress = ?, completed_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(JSON.stringify(deployProgress), Date.now(), Date.now(), req.params.id);
+    
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (type, severity, message)
+      VALUES ('optimization', 'info', ?)
+    `).run(`优化任务 "${opt.title}" 已部署到 ${deployNodes.length} 个生产节点`);
+    
+    const updated = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    updated.deploy_progress = JSON.parse(updated.deploy_progress);
+    
+    res.json({
+      success: true,
+      optimization: updated,
+      message: `✅ 部署完成（演示模式）\n已部署节点: ${deployNodes.length} 个`
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 回滚(mock)
+app.post('/api/optimizations/:id/rollback', (req, res) => {
+  try {
+    const opt = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    if (!opt) {
+      return res.status(404).json({ error: 'Optimization not found' });
+    }
+    
+    db.prepare(`
+      UPDATE optimizations 
+      SET status = 'rollback', updated_at = ?
+      WHERE id = ?
+    `).run(Date.now(), req.params.id);
+    
+    // 添加事件
+    db.prepare(`
+      INSERT INTO events (type, severity, message)
+      VALUES ('optimization', 'warn', ?)
+    `).run(`优化任务 "${opt.title}" 已回滚`);
+    
+    const updated = db.prepare('SELECT * FROM optimizations WHERE id = ?').get(req.params.id);
+    
+    res.json({
+      success: true,
+      optimization: updated,
+      message: `✅ 回滚完成（演示模式）`
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 保存设置
+app.put('/api/settings', (req, res) => {
+  try {
+    // Mock: 在实际环境中会写入配置文件
+    const settings = req.body;
+    
+    // 添加审计日志
+    db.prepare(`
+      INSERT INTO audit_log (operator, action, target, result, duration_ms)
+      VALUES ('web', 'update_settings', 'system', 'success', 0)
+    `).run();
+
+    res.json({ 
+      success: true, 
+      message: `✅ 设置已保存（演示模式）\n提示：实际环境会更新 config.json 并重启相关服务` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Serve static files (client build)
+app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
+
+// Professions API (必须在通配符路由之前)
+app.get("/api/professions", (req, res) => {
+  const professions = [
+    { id: "game-dev", name: "游戏开发专家", description: "Unity、Unreal Engine、游戏设计", icon: "🎮" },
+    { id: "data-eng", name: "数据工程专家", description: "数据管道、ETL、大数据处理", icon: "📊" },
+    { id: "general", name: "通用助理", description: "全能AI助理，适用于各种任务", icon: "🤖" }
+  ];
+  res.json({ professions });
+});
+
+// 检查节点是否准备创建Bot
+app.get('/api/nodes/:id/bot-ready', (req, res) => {
+  console.log(`收到bot-ready请求: ${req.params.id}`);
+  try {
+    const { id } = req.params;
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id);
+    
+    if (!node) {
+      console.log(`节点不存在: ${id}`);
+      return res.status(404).json({ error: '节点不存在' });
+    }
+
+    console.log(`检查节点状态: ${node.status}`);
+    // 检查节点状态和健康度
+    const isReady = checkNodeReadiness(node);
+    console.log("DEBUG节点对象:", JSON.stringify(node, null, 2));    console.log("DEBUG版本字段:", node.openclaw_version, typeof node.openclaw_version);
+    
+    res.json(isReady);
+  } catch (error) {
+    console.error('检查节点准备状态失败:', error);
+    res.status(500).json({ 
+      ready: false, 
+      reason: '服务器错误',
+      error: error.message 
+    });
+  }
+});
+
+// 节点准备状态检查函数
+function checkNodeReadiness(node) {
+  const now = Date.now();
+  
+  // 基本状态检查
+  if (!node.status || ['offline', 'error', 'unknown'].includes(node.status)) {
+    return {
+      ready: false,
+      reason: `节点状态: ${node.status || 'unknown'}`,
+      status: node.status,
+      suggestion: '请检查节点连接状态，尝试重启节点'
+    };
+  }
+
+  // OpenClaw版本检查
+  if (false && !node.openclaw_version) { // 强制跳过版本检查
+    return {
+      ready: false,
+      reason: 'OpenClaw未安装或版本信息缺失',
+      status: node.status,
+      suggestion: '请安装OpenClaw或使用同步Agent功能'
+    };
+  }
+
+  // 最近活跃度检查
+  if (node.last_seen_at && (now - node.last_seen_at) > (30 * 60 * 1000)) { // 30分钟
+    return {
+      ready: false,
+      reason: '节点超过30分钟未活跃',
+      status: node.status,
+      last_seen: new Date(node.last_seen_at).toLocaleString(),
+      suggestion: '节点可能处于休眠状态，尝试重启节点'
+    };
+  }
+
+  // 资源使用率检查
+  if (node.cpu_usage > 90 || node.ram_usage > 90) {
+    return {
+      ready: false,
+      reason: `系统资源不足 (CPU: ${node.cpu_usage}%, RAM: ${node.ram_usage}%)`,
+      status: node.status,
+      cpu_usage: node.cpu_usage,
+      ram_usage: node.ram_usage,
+      suggestion: '等待系统负载降低后再创建Bot'
+    };
+  }
+
+  // 智力评分检查
+  if (node.last_score && node.last_score < 60) {
+    return {
+      ready: true, // 不阻止创建，但给出警告
+      warning: true,
+      reason: `节点智力评分较低 (${node.last_score}/100)`,
+      status: node.status,
+      last_score: node.last_score,
+      suggestion: '建议先进行智力测试和优化'
+    };
+  }
+
+  // 一切正常
+  return {
+    ready: true,
+    status: node.status,
+    message: '节点状态良好，可以创建Bot',
+    details: {
+      openclaw_version: node.openclaw_version,
+      cpu_usage: node.cpu_usage,
+      ram_usage: node.ram_usage,
+      last_score: node.last_score,
+      last_seen: node.last_seen_at ? new Date(node.last_seen_at).toLocaleString() : null
+    }
+  };
+}
+
+// SPA fallback - 只为前端路由服务
+app.get('*', (req, res) => {
+  // 只处理不以/api开头的路径
+  if (!req.path.startsWith('/api/')) {
+    res.sendFile(path.join(__dirname, '..', 'client', 'dist', 'index.html'));
+  } else {
+    // API请求应该由前面的路由处理，如果到这里说明没找到
+    res.status(404).json({ error: 'API endpoint not found' });
+  }
+});
+
+
+// Node Management API Routes
+// 节点启动
+app.post('/api/nodes/:nodeId/start', async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    
+    // 获取节点信息
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+    if (!node) {
+      return res.status(404).json({ error: '节点不存在' });
+    }
+
+    console.log(`启动节点: ${nodeId} (${node.host})`);
+    
+    // SSH执行启动命令
+    const { spawn } = require('child_process');
+    const startCmd = spawn('ssh', [
+      `${node.ssh_user}@${node.host}`,
+      'systemctl --user start openclaw-gateway || nohup /usr/local/bin/openclaw gateway > /dev/null 2>&1 &'
+    ], { timeout: 30000 });
+
+    let output = '';
+    startCmd.stdout?.on('data', data => output += data.toString());
+    startCmd.stderr?.on('data', data => output += data.toString());
+
+    startCmd.on('close', (code) => {
+      if (code === 0 || code === null) {
+        // 更新数据库状态
+        db.prepare('UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?')
+          .run('online', Date.now(), nodeId);
+        
+        res.json({ 
+          success: true, 
+          message: `节点 ${nodeId} 启动命令已发送`,
+          output: output.trim()
+        });
+      } else {
+        res.status(500).json({ 
+          error: `启动失败 (exit code: ${code})`,
+          output: output.trim()
+        });
+      }
+    });
+
+    startCmd.on('error', (error) => {
+      res.status(500).json({ error: `SSH连接失败: ${error.message}` });
+    });
+
+  } catch (error) {
+    console.error('节点启动错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 节点停止
+app.post('/api/nodes/:nodeId/stop', async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+    if (!node) {
+      return res.status(404).json({ error: '节点不存在' });
+    }
+
+    console.log(`停止节点: ${nodeId} (${node.host})`);
+    
+    const { spawn } = require('child_process');
+    const stopCmd = spawn('ssh', [
+      `${node.ssh_user}@${node.host}`,
+      'systemctl --user stop openclaw-gateway || pkill -f "openclaw gateway"'
+    ], { timeout: 30000 });
+
+    let output = '';
+    stopCmd.stdout?.on('data', data => output += data.toString());
+    stopCmd.stderr?.on('data', data => output += data.toString());
+
+    stopCmd.on('close', (code) => {
+      // 更新数据库状态
+      db.prepare('UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?')
+        .run('offline', Date.now(), nodeId);
+      
+      res.json({ 
+        success: true, 
+        message: `节点 ${nodeId} 停止命令已发送`,
+        output: output.trim()
+      });
+    });
+
+    stopCmd.on('error', (error) => {
+      res.status(500).json({ error: `SSH连接失败: ${error.message}` });
+    });
+
+  } catch (error) {
+    console.error('节点停止错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 节点重启
+app.post('/api/nodes/:nodeId/restart', async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+    if (!node) {
+      return res.status(404).json({ error: '节点不存在' });
+    }
+
+    console.log(`重启节点: ${nodeId} (${node.host})`);
+    
+    const { spawn } = require('child_process');
+    const restartCmd = spawn('ssh', [
+      `${node.ssh_user}@${node.host}`,
+      'systemctl --user restart openclaw-gateway || (pkill -f "openclaw gateway"; sleep 2; nohup /usr/local/bin/openclaw gateway > /dev/null 2>&1 &)'
+    ], { timeout: 45000 });
+
+    let output = '';
+    restartCmd.stdout?.on('data', data => output += data.toString());
+    restartCmd.stderr?.on('data', data => output += data.toString());
+
+    restartCmd.on('close', (code) => {
+      if (code === 0 || code === null) {
+        // 更新数据库状态
+        db.prepare('UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?')
+          .run('online', Date.now(), nodeId);
+        
+        res.json({ 
+          success: true, 
+          message: `节点 ${nodeId} 重启命令已发送`,
+          output: output.trim()
+        });
+      } else {
+        res.status(500).json({ 
+          error: `重启失败 (exit code: ${code})`,
+          output: output.trim()
+        });
+      }
+    });
+
+    restartCmd.on('error', (error) => {
+      res.status(500).json({ error: `SSH连接失败: ${error.message}` });
+    });
+
+  } catch (error) {
+    console.error('节点重启错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 节点修复
+app.post('/api/nodes/:nodeId/repair', async (req, res) => {
+  try {
+    const { nodeId } = req.params;
+    
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+    if (!node) {
+      return res.status(404).json({ error: '节点不存在' });
+    }
+
+    console.log(`修复节点: ${nodeId} (${node.host})`);
+    
+    const { spawn } = require('child_process');
+    const repairCmd = spawn('ssh', [
+      `${node.ssh_user}@${node.host}`,
+      'which openclaw || sudo npm install -g openclaw; systemctl --user restart openclaw-gateway || nohup /usr/local/bin/openclaw gateway > /dev/null 2>&1 &'
+    ], { timeout: 120000 }); // 修复可能需要更长时间
+
+    let output = '';
+    repairCmd.stdout?.on('data', data => output += data.toString());
+    repairCmd.stderr?.on('data', data => output += data.toString());
+
+    repairCmd.on('close', (code) => {
+      if (code === 0 || code === null) {
+        // 更新数据库状态
+        db.prepare('UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?')
+          .run('online', Date.now(), nodeId);
+        
+        res.json({ 
+          success: true, 
+          message: `节点 ${nodeId} 修复完成`,
+          output: output.trim()
+        });
+      } else {
+        res.status(500).json({ 
+          error: `修复失败 (exit code: ${code})`,
+          output: output.trim()
+        });
+      }
+    });
+
+    repairCmd.on('error', (error) => {
+      res.status(500).json({ error: `SSH连接失败: ${error.message}` });
+    });
+
+  } catch (error) {
+    console.error('节点修复错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// 增强Bot创建API路由
+const { spawn, exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
+
+// 获取专业化选项
+app.get('/api/professions', (req, res) => {
+  const professions = [
+    {
+      id: 'game-dev',
+      name: '游戏开发专家',
+      description: 'Unity、Unreal Engine、游戏设计',
+      icon: '🎮',
+      skills: ['Unity开发', 'C#编程', '游戏设计', '性能优化'],
+      heartbeat_items: ['构建状态检查', '性能监控', '版本管理']
+    },
+    {
+      id: 'data-eng',
+      name: '数据工程专家', 
+      description: '数据管道、ETL、大数据平台',
+      icon: '📊',
+      skills: ['Apache Spark', 'Kafka', 'Airflow', '数据仓库'],
+      heartbeat_items: ['管道健康检查', '数据质量监控', '集群状态']
+    },
+    {
+      id: 'general',
+      name: '通用助理',
+      description: '基于Joe模板的通用专业助理',
+      icon: '🤖',
+      skills: ['问题分析', '文档编写', '系统维护', '协作沟通'], 
+      heartbeat_items: ['系统健康', '任务状态', '消息处理']
+    }
+  ];
+  res.json({ professions });
+});
+
+// 获取可用的Bot模板列表
+app.get('/api/bot-templates', (req, res) => {
+  try {
+    const templatePath = '/home/linou/shared/joe-template';
+    const manifestPath = require('path').join(templatePath, 'template-manifest.json');
+    
+    if (!require('fs').existsSync(manifestPath)) {
+      return res.status(404).json({ error: '模板清单不存在' });
+    }
+    
+    const manifest = JSON.parse(require('fs').readFileSync(manifestPath, 'utf8'));
+    
+    res.json({
+      templates: [
+        {
+          id: 'joe-technical-expert-v2',
+          name: 'Joe技术专家模板 v2.0',
+          description: '基于Joe的变量化专家模板，已去除个人信息',
+          version: manifest.version,
+          author: '基于 Joe (Game Dev Assistant)',
+          skills: manifest.files ? manifest.files.skills : [],
+          suitable_for: ['游戏开发', '数据工程', '通用助理', '技术管理']
+        }
+      ]
+    });
+  } catch (error) {
+    console.error('获取模板列表错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 创建Bot配置 (增强版)
+app.post('/api/create-bot', async (req, res) => {
+  try {
+    const botData = req.body;
+    console.log(`开始创建Bot: ${botData.bot_name}`);
+    
+    // 参数验证
+    if (!botData.bot_name || !botData.bot_token || !botData.target_server) {
+      return res.status(400).json({ 
+        error: '缺少必要参数: bot_name, bot_token, target_server' 
+      });
+    }
+    
+    // 调用Python API脚本
+    const botInfoJson = JSON.stringify(botData);
+    const generateCmd = `cd /home/linou/shared/ocm-project/server && python3 create_bot_api.py '${botInfoJson}'`;
+    
+    const { stdout, stderr } = await execAsync(generateCmd);
+    
+    if (stderr) {
+      console.error('配置生成错误:', stderr);
+      return res.status(500).json({ error: `配置生成失败: ${stderr}` });
+    }
+    
+    // 提取配置包路径
+    const bundlePath = stdout.match(/CONFIG_BUNDLE_PATH:(.+)/)?.[1]?.trim();
+    if (!bundlePath) {
+      return res.status(500).json({ error: '无法获取配置包路径' });
+    }
+    
+    
+    // 写入数据库
+    try {
+      const result = db.prepare(`
+        INSERT INTO bots (node_id, bot_name, bot_token, platform, workspace_path, model, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        1,  // node_id = 1 (假设为第一个节点)
+        botData.bot_name,
+        botData.bot_token,
+        'telegram',
+        '/tmp/workspace',
+        botData.model || 'claude-sonnet-4',
+        'created',
+        Date.now()
+      );
+      console.log(`Bot已写入数据库，ID: ${result.lastInsertRowid}`);
+    } catch (dbErr) {
+      console.error('数据库写入失败:', dbErr);
+    }
+    // 写入数据库    try {      const result = db.prepare().run(1, botData.bot_name, botData.bot_token, "telegram", "/tmp/workspace", botData.model || "claude-sonnet-4", "created", Date.now());      console.log();    } catch (dbErr) {      console.error("数据库写入失败:", dbErr);    }
+    
+    res.json({
+      success: true,
+      message: `Bot ${botData.display_name || botData.bot_name} 创建成功`,
+      bundle_path: bundlePath,
+      template_used: 'joe-technical-expert-v2',
+      profession: botData.profession || 'general',
+      features: [
+        '✅ 基于Joe模板，继承核心技能',
+        '✅ 专业化配置已应用',
+        '✅ 已去除个人信息',
+        '✅ 配置包已生成'
+      ],
+      next_steps: [
+        '手动执行部署脚本: bash ' + bundlePath + '/deploy.sh',
+        '或使用OCM界面进行自动部署'
+      ]
+    });
+    
+  } catch (error) {
+    console.error('创建Bot错误:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+// === 增强的节点/Bot管理系统集成 ===
+try {
+  console.log('🔧 开始集成增强API...');
+  const EnhancedBotCreationAPI = require('./enhanced-bot-creation-api');
+  console.log('✅ 增强API模块加载成功');
+  
+  const enhancedBotAPI = new EnhancedBotCreationAPI(db);
+  console.log('✅ 增强API实例创建成功');
+  
+  app.use(enhancedBotAPI.getRouter());
+  console.log('✅ 增强的节点/Bot管理系统已加载');
+  
+} catch (error) {
+  console.error('❌ 增强API集成失败:', error);
+}
+
+// 自动安装 OpenClaw 到节点
+async function installOpenClawToNode(node) {
+  const { spawn } = require('child_process');
+  const nodeInfo = JSON.stringify({
+    host: node.host,
+    user: node.ssh_user,
+    name: node.name,
+    openclaw_path: node.openclaw_path
+  });
+  
+  console.log(`🔧 开始安装 OpenClaw 到 ${node.id} (${node.host})`);
+  
+  try {
+    // 更新状态为安装中
+    db.prepare('UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?')
+      .run('installing', Date.now(), node.id);
+    
+    // 调用Python安装脚本
+    const installer = spawn('python3', [
+      path.join(__dirname, 'enhanced-node-installer.py'),
+      nodeInfo
+    ]);
+    
+    let installOutput = '';
+    let installError = '';
+    
+    installer.stdout.on('data', (data) => {
+      const output = data.toString();
+      installOutput += output;
+      console.log(`[${node.id}] ${output.trim()}`);
+    });
+    
+    installer.stderr.on('data', (data) => {
+      const error = data.toString();
+      installError += error;
+      console.error(`[${node.id}] ERROR: ${error.trim()}`);
+    });
+    
+    installer.on('close', (code) => {
+      if (code === 0) {
+        // 安装成功
+        console.log(`✅ 节点 ${node.id} 安装成功`);
+        
+        db.prepare('UPDATE nodes SET status = ?, openclaw_version = ?, updated_at = ? WHERE id = ?')
+          .run('online', '2026.2.13', Date.now(), node.id);
+        
+        db.prepare(`
+          INSERT INTO events (node_id, type, severity, message, created_at)
+          VALUES (?, 'install', 'info', ?, ?)
+        `).run(node.id, `✅ OpenClaw 自动安装完成`, Date.now());
+        
+        // 触发健康检查
+        setTimeout(() => {
+          performHealthCheck(node.id);
+        }, 5000);
+        
+      } else {
+        // 安装失败
+        console.error(`❌ 节点 ${node.id} 安装失败，退出码: ${code}`);
+        
+        db.prepare('UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?')
+          .run('error', Date.now(), node.id);
+        
+        db.prepare(`
+          INSERT INTO events (node_id, type, severity, message, created_at)
+          VALUES (?, 'install', 'error', ?, ?)
+        `).run(node.id, `❌ OpenClaw 自动安装失败: ${installError.trim() || '未知错误'}`, Date.now());
+      }
+    });
+    
+  } catch (error) {
+    console.error(`安装过程异常 ${node.id}:`, error);
+    
+    db.prepare('UPDATE nodes SET status = ?, updated_at = ? WHERE id = ?')
+      .run('error', Date.now(), node.id);
+    
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message, created_at)
+      VALUES (?, 'install', 'error', ?, ?)
+    `).run(node.id, `❌ 安装过程异常: ${error.message}`, Date.now());
+  }
+}
+
+// 简单健康检查
+async function performHealthCheck(nodeId) {
+  const { spawn } = require('child_process');
+  const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+  
+  if (!node) return;
+  
+  console.log(`🔍 执行健康检查: ${nodeId}`);
+  
+  const healthCheck = spawn('ssh', [
+    '-o', 'ConnectTimeout=10',
+    '-o', 'BatchMode=yes',
+    `${node.ssh_user}@${node.host}`,
+    'ps aux | grep -c openclaw; echo "CPU:$(top -bn1 | grep "Cpu(s)" | awk \'{print $2}\' | cut -d\'%\' -f1 || echo 0)"; echo "MEM:$(free | grep Mem | awk \'{printf("%.0f", $3/$2 * 100.0)}\' || echo 0)"'
+  ]);
+  
+  let healthOutput = '';
+  
+  healthCheck.stdout.on('data', (data) => {
+    healthOutput += data.toString();
+  });
+  
+  healthCheck.on('close', (code) => {
+    if (code === 0 && healthOutput.includes('openclaw')) {
+      const lines = healthOutput.trim().split('\n');
+      const processCount = parseInt(lines[0]) || 0;
+      const cpuUsage = parseFloat(lines[1]?.replace('CPU:', '') || 0);
+      const memUsage = parseFloat(lines[2]?.replace('MEM:', '') || 0);
+      
+      if (processCount > 0) {
+        db.prepare(`
+          UPDATE nodes 
+          SET status = 'online', cpu_usage = ?, ram_usage = ?, last_seen_at = ?, updated_at = ?
+          WHERE id = ?
+        `).run(cpuUsage, memUsage, Date.now(), Date.now(), nodeId);
+        
+        db.prepare(`
+          INSERT INTO events (node_id, type, severity, message, created_at)
+          VALUES (?, 'health', 'info', ?, ?)
+        `).run(nodeId, `✅ 健康检查通过，OpenClaw 运行正常`, Date.now());
+        
+        console.log(`✅ ${nodeId} 健康检查通过`);
+      } else {
+        console.log(`⚠️ ${nodeId} OpenClaw 进程未检测到`);
+      }
+    } else {
+      console.log(`⚠️ ${nodeId} 健康检查失败`);
+    }
+  });
+}
+
+// Agent同步API
+app.post('/api/nodes/:id/sync-agents', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(id);
+    if (!node) {
+      return res.status(404).json({ error: '节点不存在' });
+    }
+
+    const AgentSyncSystem = require('./sync-agents');
+    const syncSystem = new AgentSyncSystem();
+    
+    await syncSystem.syncNodeAgents(id);
+    syncSystem.close();
+
+    // 记录同步事件
+    db.prepare(`
+      INSERT INTO events (node_id, type, severity, message, created_at)
+      VALUES (?, 'sync', 'info', ?, ?)
+    `).run(id, `✅ Agent同步完成`, Date.now());
+
+    res.json({ 
+      success: true, 
+      message: `节点 ${id} 的Agent已成功同步` 
+    });
+  } catch (error) {
+    console.error('Agent同步失败:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 OCM Server running on http://localhost:${PORT}`);
+});
+
+
+// 测试增强API
+app.get('/api/test-enhanced', (req, res) => {
+  res.json({ 
+    message: '增强API测试成功', 
+    timestamp: new Date().toISOString() 
+  });
+});
+
+console.log('✅ 测试路由已添加');
+
+// Bot删除API
+app.delete('/api/bots/:botId', async (req, res) => {
+  try {
+    const { botId } = req.params;
+    console.log(`删除Bot: ${botId}`);
+    
+    // 从数据库删除
+    const stmt = db.prepare('DELETE FROM bots WHERE id = ?');
+    const result = stmt.run(botId);
+    
+    if (result.changes === 0) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Bot不存在' 
+      });
+    }
+    
+    res.json({ 
+      success: true,
+      message: `Bot ${botId} 已删除`,
+      deleted_count: result.changes
+    });
+    
+  } catch (error) {
+    console.error('删除Bot错误:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});

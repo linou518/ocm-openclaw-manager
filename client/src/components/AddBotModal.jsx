@@ -1,0 +1,464 @@
+import React, { useState, useEffect } from 'react';
+
+function EnhancedAddBotModal({ isOpen, onClose, onSuccess, nodeId }) {
+  const [loading, setLoading] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [professions, setProfessions] = useState([]);
+  const [formData, setFormData] = useState({
+    bot_name: '',
+    bot_token: '',
+    platform: 'telegram',
+    workspace_path: '',
+    model: 'anthropic/claude-sonnet-4',
+    openclaw_url: '',
+    // 新增字段
+    display_name: '',
+    description: '',
+    profession: 'general',
+    target_server: nodeId || 't440'
+  });
+
+  // 当模态框打开时重置状态
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentStep(1);
+      setLoading(false);
+      loadProfessions();
+    }
+  }, [isOpen]);
+
+  // 加载专业选项
+  const loadProfessions = async () => {
+    try {
+      const response = await fetch('/api/profession-templates');
+      const data = await response.json();
+      setProfessions(data.professions || []);
+    } catch (error) {
+      console.error('加载专业选项失败:', error);
+      // 使用默认专业选项
+      setProfessions([
+        { id: 'general', name: '通用助理', icon: '🤖', description: '基于Joe模板的通用专业助理' },
+        { id: 'game-dev', name: '游戏开发专家', icon: '🎮', description: 'Unity、Unreal Engine、游戏设计' },
+        { id: 'data-eng', name: '数据工程专家', icon: '📊', description: '数据管道、ETL、大数据平台' }
+      ]);
+    }
+  };
+
+  // 自动更新相关字段
+  useEffect(() => {
+    if (formData.bot_name && currentStep >= 1) {
+      const agentId = formData.bot_name.replace('@', '').replace('_bot', '');
+      setFormData(prev => ({
+        ...prev,
+        workspace_path: `~/openclaw/workspaces/${agentId}`,
+        openclaw_url: 'http://localhost:3000'
+      }));
+    }
+  }, [formData.bot_name, currentStep]);
+
+  if (!isOpen) return null;
+
+  const handleNext = () => {
+    console.log(`尝试从步骤${currentStep}前进`, formData);
+    if (validateCurrentStep()) {
+      const nextStep = currentStep + 1;
+      console.log(`步骤验证成功，前进到步骤${nextStep}`);
+      setCurrentStep(nextStep);
+    }
+  };
+
+  const handlePrevious = () => {
+    console.log(`从步骤${currentStep}后退`);
+    setCurrentStep(prev => prev - 1);
+  };
+
+  const validateCurrentStep = () => {
+    switch (currentStep) {
+      case 1:
+        if (!formData.bot_name.trim()) {
+          alert('请输入Bot名称');
+          return false;
+        }
+        if (!formData.bot_name.startsWith('@')) {
+          alert('Bot名称必须以@开头');
+          return false;
+        }
+        if (!formData.bot_token.trim()) {
+          alert('请输入Bot Token');
+          return false;
+        }
+        if (!formData.display_name.trim()) {
+          alert('请输入显示名称');
+          return false;
+        }
+        return true;
+      case 2:
+        if (!formData.profession) {
+          alert('请选择专业方向');
+          return false;
+        }
+        return true;
+      default:
+        return true;
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (currentStep < 3) {
+      alert('请完成所有步骤后再创建');
+      return;
+    }
+    
+    setLoading(true);
+    console.log('开始创建Bot:', formData);
+    
+    try {
+      // 使用新的Bot创建API
+      const res = await fetch('/api/create-bot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          target_server: nodeId
+        })
+      });
+      
+      const result = await res.json();
+      console.log('创建结果:', result);
+      
+      if (res.ok && result.success) {
+        alert(`✅ Bot ${formData.display_name} 创建成功！\n${result.message}`);
+        onSuccess();
+        onClose();
+        resetForm();
+      } else {
+        alert('❌ 创建失败: ' + (result.error || '未知错误'));
+      }
+    } catch (error) {
+      console.error('创建错误:', error);
+      alert('❌ 创建失败: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      bot_name: '',
+      bot_token: '',
+      platform: 'telegram',
+      workspace_path: '',
+      model: 'anthropic/claude-sonnet-4',
+      openclaw_url: '',
+      display_name: '',
+      description: '',
+      profession: 'general',
+      target_server: nodeId || 't440'
+    });
+    setCurrentStep(1);
+  };
+
+  const selectedProfession = professions.find(p => p.id === formData.profession);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-700">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-xl font-bold text-white">🤖 创建专业Bot</h3>
+              <p className="text-sm text-gray-400 mt-1">基于Joe模板快速创建专业AI助理</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white text-2xl leading-none"
+            >
+              ×
+            </button>
+          </div>
+          
+          {/* Progress Steps */}
+          <div className="mt-4 flex justify-center">
+            <div className="flex items-center space-x-4">
+              <div className={`flex items-center ${currentStep >= 1 ? 'text-blue-400' : 'text-gray-500'}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  currentStep === 1 ? 'bg-blue-600' : 
+                  currentStep > 1 ? 'bg-green-600' : 'bg-gray-600'
+                }`}>1</div>
+                <span className="ml-2 text-sm">基本信息</span>
+              </div>
+              <div className="w-8 h-px bg-gray-600"></div>
+              <div className={`flex items-center ${currentStep >= 2 ? 'text-blue-400' : 'text-gray-500'}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  currentStep === 2 ? 'bg-blue-600' : 
+                  currentStep > 2 ? 'bg-green-600' : 'bg-gray-600'
+                }`}>2</div>
+                <span className="ml-2 text-sm">专业选择</span>
+              </div>
+              <div className="w-8 h-px bg-gray-600"></div>
+              <div className={`flex items-center ${currentStep >= 3 ? 'text-blue-400' : 'text-gray-500'}`}>
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                  currentStep === 3 ? 'bg-blue-600' : 'bg-gray-600'
+                }`}>3</div>
+                <span className="ml-2 text-sm">确认创建</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          {/* Step 1: 基本信息 */}
+          {currentStep === 1 && (
+            <div className="p-6 space-y-4">
+              <div className="mb-4">
+                <h4 className="text-lg font-bold text-white mb-2">📝 基本信息</h4>
+                <p className="text-sm text-gray-400">配置Bot的基础信息和Telegram连接</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Bot名称 <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.bot_name}
+                    onChange={(e) => setFormData({...formData, bot_name: e.target.value})}
+                    placeholder="例: @gamedev_expert_bot"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">必须以@开头，建议以_bot结尾</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    显示名称 <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.display_name}
+                    onChange={(e) => setFormData({...formData, display_name: e.target.value})}
+                    placeholder="例: GameDev Expert"
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Bot Token <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={formData.bot_token}
+                  onChange={(e) => setFormData({...formData, bot_token: e.target.value})}
+                  placeholder="从BotFather获取的Token"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">在Telegram中联系 @BotFather 创建新Bot并获取Token</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  描述
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  placeholder="简短描述这个Bot的用途..."
+                  rows="2"
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">AI模型</label>
+                  <select
+                    value={formData.model}
+                    onChange={(e) => setFormData({...formData, model: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="anthropic/claude-sonnet-4">Claude Sonnet 4 (推荐)</option>
+                    <option value="anthropic/claude-sonnet-4-20250514">Claude Sonnet 4.5</option>
+                    <option value="anthropic/claude-haiku-4">Claude Haiku 4 (快速)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">平台</label>
+                  <select
+                    value={formData.platform}
+                    onChange={(e) => setFormData({...formData, platform: e.target.value})}
+                    className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled
+                  >
+                    <option value="telegram">Telegram</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: 专业选择 */}
+          {currentStep === 2 && (
+            <div className="p-6">
+              <div className="mb-4">
+                <h4 className="text-lg font-bold text-white mb-2">🎯 选择专业方向</h4>
+                <p className="text-sm text-gray-400">基于Joe模板，选择适合的专业化方向</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {professions.map((profession) => (
+                  <div
+                    key={profession.id}
+                    onClick={() => setFormData({...formData, profession: profession.id})}
+                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                      formData.profession === profession.id 
+                        ? 'border-blue-600 bg-blue-900/20' 
+                        : 'border-gray-700 hover:border-blue-500'
+                    }`}
+                  >
+                    <div className="text-2xl mb-2">{profession.icon}</div>
+                    <h3 className="font-bold text-white mb-1">{profession.name}</h3>
+                    <p className="text-sm text-gray-400">{profession.description}</p>
+                    {profession.skills && (
+                      <div className="text-xs text-gray-500 mt-2">
+                        技能: {profession.skills.slice(0, 2).join(', ')}
+                        {profession.skills.length > 2 && '...'}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {selectedProfession && (
+                <div className="mt-4 p-4 bg-blue-900/20 border border-blue-700 rounded-lg">
+                  <h4 className="font-bold text-blue-400 mb-2">已选择: {selectedProfession.name}</h4>
+                  <p className="text-sm text-gray-300">{selectedProfession.description}</p>
+                  {selectedProfession.skills && (
+                    <div className="text-sm text-gray-400 mt-2">
+                      <strong>核心技能:</strong> {selectedProfession.skills.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: 确认创建 */}
+          {currentStep === 3 && (
+            <div className="p-6">
+              <div className="mb-4">
+                <h4 className="text-lg font-bold text-white mb-2">✅ 确认Bot配置</h4>
+                <p className="text-sm text-gray-400">最后确认信息无误后点击创建</p>
+              </div>
+
+              <div className="space-y-4 text-sm">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-gray-500">Bot名称:</span>
+                    <span className="ml-2 text-white">{formData.bot_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">显示名称:</span>
+                    <span className="ml-2 text-white">{formData.display_name}</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <span className="text-gray-500">专业方向:</span>
+                  <span className="ml-2 text-white">{selectedProfession?.icon} {selectedProfession?.name}</span>
+                </div>
+
+                <div>
+                  <span className="text-gray-500">AI模型:</span>
+                  <span className="ml-2 text-white">{formData.model}</span>
+                </div>
+
+                <div>
+                  <span className="text-gray-500">描述:</span>
+                  <span className="ml-2 text-white">{formData.description || '无描述'}</span>
+                </div>
+                
+                <div>
+                  <span className="text-gray-500">目标服务器:</span>
+                  <span className="ml-2 text-white">{nodeId}</span>
+                </div>
+              </div>
+
+              <div className="mt-6 p-4 bg-green-900/20 border border-green-700 rounded-lg">
+                <h4 className="font-bold text-green-400 mb-2">🚀 创建后的自动化步骤</h4>
+                <div className="text-sm text-gray-300 space-y-1">
+                  <div>• 基于Joe模板生成专业化配置</div>
+                  <div>• 继承Joe的核心技能和命令系统</div>
+                  <div>• 自动部署到目标服务器</div>
+                  <div>• 启动并验证Bot服务</div>
+                  <div>• 可立即在Telegram中使用</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Footer Buttons */}
+          <div className="px-6 py-4 border-t border-gray-700 flex justify-between">
+            <div>
+              {currentStep > 1 && (
+                <button
+                  type="button"
+                  onClick={handlePrevious}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  ← 上一步
+                </button>
+              )}
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+              >
+                取消
+              </button>
+
+              {currentStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  下一步 →
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+                >
+                  {loading ? '创建中...' : '🚀 创建Bot'}
+                </button>
+              )}
+            </div>
+          </div>
+        </form>
+
+        {/* Debug Info */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="px-6 py-2 border-t border-gray-700 bg-gray-900 text-xs text-gray-500">
+            Debug: Step {currentStep}, Profession: {formData.profession}, Node: {nodeId}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default EnhancedAddBotModal;

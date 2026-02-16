@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创建新Bot - OCM</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .form-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 90%;
+            max-width: 600px;
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-weight: 600;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-row {
+            display: flex;
+            gap: 1rem;
+        }
+        .form-row .form-group {
+            flex: 1;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #555;
+            font-weight: 500;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 0.75rem 2rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            width: 100%;
+            margin-top: 1rem;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .required {
+            color: #e74c3c;
+        }
+        .help-text {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+        .success {
+            background: #2ecc71;
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        .error {
+            background: #e74c3c;
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h1>🤖 创建新Bot</h1>
+        
+        <div id="successMsg" class="success"></div>
+        <div id="errorMsg" class="error"></div>
+        
+        <form id="createBotForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="name">Bot名称 <span class="required">*</span></label>
+                    <input type="text" id="name" name="name" required placeholder="例: Customer Service Bot">
+                </div>
+                <div class="form-group">
+                    <label for="bot_id">Bot ID <span class="required">*</span></label>
+                    <input type="text" id="bot_id" name="bot_id" required placeholder="例: customer-service">
+                    <div class="help-text">唯一标识符，只能包含字母、数字、连字符</div>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="agent_id">Agent ID <span class="required">*</span></label>
+                    <input type="text" id="agent_id" name="agent_id" required placeholder="例: customer-service">
+                    <div class="help-text">OpenClaw agents配置中的ID</div>
+                </div>
+                <div class="form-group">
+                    <label for="node_id">节点 <span class="required">*</span></label>
+                    <select id="node_id" name="node_id" required>
+                        <option value="">选择节点...</option>
+                        <option value="pc-a">PC-A (192.168.3.73)</option>
+                        <option value="t440">T440 (192.168.3.33)</option>
+                        <option value="baota">Baota (192.168.3.11)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="personality">人格设定 <span class="required">*</span></label>
+                <textarea id="personality" name="personality" required placeholder="描述这个Bot的性格、专长、行为方式...&#10;例如：专业的客户服务助手，友好耐心，精通产品知识，能够快速解决用户问题。"></textarea>
+                <div class="help-text">详细描述Bot的角色定位和行为特征</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="telegram_token">Telegram Bot Token</label>
+                <input type="text" id="telegram_token" name="telegram_token" placeholder="1234567890:AAAA...">
+                <div class="help-text">可选，如果需要Telegram集成</div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="model">模型</label>
+                    <select id="model" name="model">
+                        <option value="claude-sonnet-4">Claude Sonnet 4 (默认)</option>
+                        <option value="claude-opus-4">Claude Opus 4</option>
+                        <option value="claude-haiku-4">Claude Haiku 4</option>
+                        <option value="gpt-4o">GPT-4o</option>
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="heartbeat_interval">心跳间隔 (分钟)</label>
+                    <input type="number" id="heartbeat_interval" name="heartbeat_interval" value="30" min="5" max="1440">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="description">描述</label>
+                <textarea id="description" name="description" placeholder="Bot的用途说明、职责范围等..."></textarea>
+            </div>
+            
+            <button type="submit" class="btn">创建Bot</button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('createBotForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = e.target.querySelector('.btn');
+            const successMsg = document.getElementById('successMsg');
+            const errorMsg = document.getElementById('errorMsg');
+            
+            // 隐藏之前的消息
+            successMsg.style.display = 'none';
+            errorMsg.style.display = 'none';
+            
+            // 禁用提交按钮
+            submitBtn.disabled = true;
+            submitBtn.textContent = '创建中...';
+            
+            try {
+                const formData = new FormData(e.target);
+                const data = Object.fromEntries(formData.entries());
+                
+                // 数据验证
+                if (!data.name || !data.bot_id || !data.agent_id || !data.node_id || !data.personality) {
+                    throw new Error('请填写所有必填字段');
+                }
+                
+                // 验证bot_id格式
+                if (!/^[a-z0-9-]+$/.test(data.bot_id)) {
+                    throw new Error('Bot ID只能包含小写字母、数字和连字符');
+                }
+                
+                const response = await fetch('/api/bots', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    successMsg.textContent = result.message || 'Bot创建成功！';
+                    successMsg.style.display = 'block';
+                    e.target.reset(); // 清空表单
+                } else {
+                    throw new Error(result.error || '创建失败');
+                }
+                
+            } catch (error) {
+                errorMsg.textContent = error.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                // 恢复提交按钮
+                submitBtn.disabled = false;
+                submitBtn.textContent = '创建Bot';
+            }
+        });
+        
+        // Bot ID自动格式化
+        document.getElementById('bot_id').addEventListener('input', (e) => {
+            e.target.value = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+        });
+    </script>
+</body>
+</html>

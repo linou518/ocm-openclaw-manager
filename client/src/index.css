@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* iPhone 自适应优化 */
+@media (max-width: 480px) {
+  /* 字体缩小 */
+  body {
+    font-size: 14px;
+  }
+  
+  /* 表格横向滚动 */
+  table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* 卡片间距缩小 */
+  .space-y-6 > * + * {
+    margin-top: 1rem !important;
+  }
+  
+  .space-y-4 > * + * {
+    margin-top: 0.75rem !important;
+  }
+  
+  /* 底部导航安全区 */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  @apply bg-gray-50;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* iPhone 自适应优化 (< 480px) */
+@media (max-width: 480px) {
+  /* 底部导航栏文字优化 */
+  .mobile-nav-text {
+    font-size: 9px;
+  }
+  
+  /* 节点网格改单列 */
+  .grid-cols-1 {
+    grid-template-columns: 1fr !important;
+  }
+  
+  /* 字体缩小 */
+  h1 {
+    font-size: 1.5rem !important;
+  }
+  
+  h2 {
+    font-size: 1.125rem !important;
+  }
+  
+  /* 表格字体 */
+  table {
+    font-size: 11px;
+  }
+  
+  table th,
+  table td {
+    padding: 8px 6px !important;
+    font-size: 11px;
+  }
+  
+  /* 按钮缩小 */
+  button {
+    font-size: 13px;
+  }
+  
+  /* 间距优化 */
+  .space-y-6 > * + * {
+    margin-top: 1rem !important;
+  }
+  
+  /* 安全区域 */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

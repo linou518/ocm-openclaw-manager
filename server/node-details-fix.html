@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>节点详情修复</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #1a1a1a; 
+            color: white; 
+        }
+        .container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+        }
+        .node-card { 
+            background: #2d3748; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin: 10px 0; 
+            border-left: 4px solid #48bb78;
+        }
+        .info-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+            gap: 15px; 
+            margin: 20px 0;
+        }
+        .info-item { 
+            background: #4a5568; 
+            padding: 15px; 
+            border-radius: 4px; 
+        }
+        .back-link { 
+            color: #63b3ed; 
+            text-decoration: none; 
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+        .back-link:hover { text-decoration: underline; }
+        button { 
+            padding: 10px 20px; 
+            margin: 5px; 
+            background: #4299e1;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background: #3182ce; }
+        pre { 
+            background: #1a202c; 
+            padding: 15px; 
+            border-radius: 4px; 
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>节点详情页面 - 临时修复版</h1>
+        <a href="http://192.168.3.33:8001" class="back-link">← 返回OCM管理面板</a>
+        
+        <div class="node-card">
+            <h2>节点信息加载中...</h2>
+            <p>正在从API获取节点数据...</p>
+            
+            <div class="info-grid" id="nodeInfo">
+                <!-- 节点信息将在这里动态加载 -->
+            </div>
+            
+            <h3>快速访问链接</h3>
+            <p>
+                <button onclick="location.href='http://192.168.3.33:8001'">返回管理面板</button>
+                <button onclick="loadNodeData('pc-b')">查看PC-B</button>
+                <button onclick="loadNodeData('baota')">查看宝塔</button>
+                <button onclick="loadNodeData('t440')">查看T440</button>
+            </p>
+            
+            <h3>API数据 (JSON)</h3>
+            <pre id="apiData">点击上方按钮加载节点数据</pre>
+        </div>
+    </div>
+    
+    <script>
+        async function loadNodeData(nodeId) {
+            try {
+                document.getElementById('apiData').textContent = '正在加载 ' + nodeId + ' 数据...';
+                
+                const response = await fetch('/api/nodes/' + nodeId);
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // 更新页面标题和基本信息
+                document.querySelector('h2').textContent = data.name + ' (' + data.id + ')';
+                document.querySelector('h2').nextElementSibling.innerHTML = 
+                    '<strong>主机:</strong> ' + data.host + ':' + data.port + ' | ' +
+                    '<strong>状态:</strong> ' + data.status + ' | ' +
+                    '<strong>OpenClaw:</strong> ' + (data.openclaw_version || '未知');
+                
+                // 更新详细信息网格
+                const infoGrid = document.getElementById('nodeInfo');
+                infoGrid.innerHTML = `
+                    <div class="info-item"><strong>SSH用户</strong><br>${data.ssh_user}</div>
+                    <div class="info-item"><strong>OpenClaw路径</strong><br>${data.openclaw_path}</div>
+                    <div class="info-item"><strong>CPU使用率</strong><br>${data.cpu_usage || 0}%</div>
+                    <div class="info-item"><strong>RAM使用率</strong><br>${data.ram_usage || 0}%</div>
+                    <div class="info-item"><strong>磁盘使用率</strong><br>${data.disk_usage || 0}%</div>
+                    <div class="info-item"><strong>健康分数</strong><br>${data.last_score || 0}/100</div>
+                    <div class="info-item"><strong>最后检查</strong><br>${data.last_seen_at ? new Date(data.last_seen_at).toLocaleString() : '从未'}</div>
+                    <div class="info-item"><strong>创建时间</strong><br>${new Date(data.created_at).toLocaleString()}</div>
+                `;
+                
+                // 更新API数据显示
+                document.getElementById('apiData').textContent = JSON.stringify(data, null, 2);
+                
+            } catch (error) {
+                document.getElementById('apiData').textContent = '加载失败: ' + error.message;
+                console.error('Error loading node data:', error);
+            }
+        }
+        
+        // 页面加载时自动加载pc-b数据
+        document.addEventListener('DOMContentLoaded', function() {
+            const nodeId = new URLSearchParams(window.location.search).get('node') || 'pc-b';
+            loadNodeData(nodeId);
+        });
+    </script>
+</body>
+</html>

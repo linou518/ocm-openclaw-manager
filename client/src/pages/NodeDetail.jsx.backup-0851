@@ -1,0 +1,1224 @@
+import React, { useState, useEffect } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { maskKey, getProviderName, getProviderColor, getStatusIcon, getPlatformIcon } from '../utils/maskKey';
+import ImplementationModal from '../components/ImplementationModal';
+import AddBotModal from '../components/AddBotModal';
+import ConfirmDialog from '../components/ConfirmDialog';
+
+function NodeDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [data, setData] = useState(null);
+  const [keys, setKeys] = useState([]);
+  const [bots, setBots] = useState([]);
+  const [skills, setSkills] = useState([]);
+  const [gatewayConfig, setGatewayConfig] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('overview');
+  const [showAddBotModal, setShowAddBotModal] = useState(false);
+  const [modalData, setModalData] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, action: null, data: null });
+  const [actionLoading, setActionLoading] = useState(false);
+  
+  // Phase 7: Bot details (memory, sessions, cron)
+  const [selectedBotId, setSelectedBotId] = useState(null);
+  const [botMemoryHealth, setBotMemoryHealth] = useState([]);
+  const [botSessions, setBotSessions] = useState([]);
+  const [botCronJobs, setBotCronJobs] = useState([]);
+  
+  // 分页状态
+  const [backupsPage, setBackupsPage] = useState(1);
+  const [scoresPage, setScoresPage] = useState(1);
+  const [eventsPage, setEventsPage] = useState(1);
+  // 处理还原按钮点击 - 跳转到备份页面
+  const handleRestoreNavigation = () => {
+    navigate(`/backups?node=${id}`);
+  };
+
+  const pageSize = 20;
+
+  useEffect(() => {
+    fetchNodeDetail();
+    fetchKeys();
+    fetchBots();
+    fetchSkills();
+    fetchGatewayConfig();
+  }, [id]);
+  
+  useEffect(() => {
+    if (selectedBotId) {
+      fetchBotMemoryHealth(selectedBotId);
+      fetchBotSessions(selectedBotId);
+      fetchBotCronJobs(selectedBotId);
+    }
+  }, [selectedBotId]);
+
+  const fetchNodeDetail = async () => {
+    try {
+      const res = await fetch(`/api/nodes/${id}`);
+      const json = await res.json();
+      setData(json);
+      setLoading(false);
+    } catch (error) {
+      console.error('Failed to fetch node detail:', error);
+      setLoading(false);
+    }
+  };
+
+  const fetchKeys = async () => {
+    try {
+      const res = await fetch(`/api/nodes/${id}/keys`);
+      const json = await res.json();
+      setKeys(json);
+    } catch (error) {
+      console.error('Failed to fetch keys:', error);
+    }
+  };
+
+  const fetchBots = async () => {
+    try {
+      const res = await fetch(`/api/nodes/${id}/bots`);
+      const json = await res.json();
+      setBots(json);
+      // Auto-select first bot if exists
+      if (json.length > 0 && !selectedBotId) {
+        setSelectedBotId(json[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch bots:', error);
+    }
+  };
+  
+  const fetchSkills = async () => {
+    try {
+      const res = await fetch(`/api/nodes/${id}/skills`);
+      const json = await res.json();
+      setSkills(json);
+    } catch (error) {
+      console.error('Failed to fetch skills:', error);
+    }
+  };
+  
+  const fetchGatewayConfig = async () => {
+    try {
+      const res = await fetch(`/api/nodes/${id}/config`);
+      const json = await res.json();
+      setGatewayConfig(json);
+    } catch (error) {
+      console.error('Failed to fetch gateway config:', error);
+    }
+  };
+  
+  const fetchBotMemoryHealth = async (botId) => {
+    try {
+      const res = await fetch(`/api/bots/${botId}/memory-health`);
+      const json = await res.json();
+      setBotMemoryHealth(json);
+    } catch (error) {
+      console.error('Failed to fetch memory health:', error);
+    }
+  };
+  
+  const fetchBotSessions = async (botId) => {
+    try {
+      const res = await fetch(`/api/bots/${botId}/sessions`);
+      const json = await res.json();
+      setBotSessions(json);
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error);
+    }
+  };
+  
+  const fetchBotCronJobs = async (botId) => {
+    try {
+      const res = await fetch(`/api/bots/${botId}/cron-jobs`);
+      const json = await res.json();
+      setBotCronJobs(json);
+    } catch (error) {
+      console.error('Failed to fetch cron jobs:', error);
+    }
+  };
+
+  const handleNodeAction = async (action) => {
+    setActionLoading(true);
+    try {
+      let endpoint = '';
+      let method = 'DELETE';
+      let body = {};
+
+      switch (action) {
+        case 'backup':
+          endpoint = `/api/nodes/${id}/backup`;
+          break;
+        case 'restore':
+          if (!confirmDialog.data?.backup_id) {
+            alert('请先选择要还原的备份');
+            return;
+          }
+          endpoint = `/api/nodes/${id}/restore`;
+          body = { backup_id: confirmDialog.data.backup_id };
+          break;
+        case 'restart':
+          endpoint = `/api/nodes/${id}/restart`;
+          break;
+        case 'test':
+          endpoint = `/api/nodes/${id}/test`;
+          break;
+      
+        case 'delete':
+          endpoint = `/api/nodes/${id}/action`;
+          method = 'DELETE';
+          body = {};
+          break;}
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined
+      });
+
+      const result = await res.json();
+      if (res.ok) {
+        if (confirmDialog.action === 'delete') {
+          alert('✅ 节点删除成功，即将返回节点列表');
+          // 删除成功后跳转回节点列表
+          window.location.href = '/';
+        } else {
+          alert(result.message || '✅ 操作成功');
+          fetchNodeDetail();
+        }
+      } else {
+        alert('❌ 操作失败: ' + result.error);
+      }
+    } catch (error) {
+      alert('❌ 操作失败: ' + error.message);
+    } finally {
+      setActionLoading(false);
+      setConfirmDialog({ isOpen: false, action: null, data: null });
+    }
+  };
+
+  const handleSyncAgents = async () => {
+    if (actionLoading) return;
+    
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/nodes/${id}/sync-agents`, { method: 'POST' });
+      const result = await res.json();
+      
+      if (res.ok) {
+        alert(`✅ Agent同步成功: ${result.message}`);
+        // 重新获取Bots信息
+        await fetchBots();
+      } else {
+        alert(`❌ Agent同步失败: ${result.error}`);
+      }
+    } catch (error) {
+      alert(`❌ Agent同步失败: ${error.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleBotRestart = async (botId) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/bots/${botId}/restart`, {
+        method: 'POST'
+      });
+      const result = await res.json();
+      if (res.ok) {
+        alert(result.message || '✅ Bot 已重启');
+        fetchBots();
+      } else {
+        alert('❌ 重启失败: ' + result.error);
+      }
+    } catch (error) {
+      alert('❌ 重启失败: ' + error.message);
+    } finally {
+      setActionLoading(false);
+      setConfirmDialog({ isOpen: false, action: null, data: null });
+    }
+  };
+
+  const handleVerifyKey = async (keyId) => {
+    try {
+      const res = await fetch(`/api/keys/${keyId}/verify`, { method: 'POST' });
+      const result = await res.json();
+      if (res.ok) {
+        alert(`✅ 验证完成\n状态: ${result.status}`);
+        fetchKeys();
+      } else {
+        alert('❌ 验证失败: ' + result.error);
+      }
+    } catch (error) {
+      alert('❌ 验证失败: ' + error.message);
+    }
+  };
+
+  const showImplementation = (type, itemId) => {
+    const implementations = {
+      backup: {
+        feature: `备份节点 ${id}`,
+        description: 'SSH 连接到节点，打包配置和 workspace，上传到 GitHub',
+        steps: [
+          `SSH 连接到 ${node?.host}:${node?.port}`,
+          '执行 ocm-agent backup (节点上的 shell 脚本)',
+          '打包 ~/.openclaw/config/ 配置文件',
+          '打包 ~/.openclaw/workspace/ 工作区',
+          '生成 metadata.json (时间、文件数、大小)',
+          'SCP 下载到 Master 的 ocm-backups/nodes/${node?.id}/',
+          `git add nodes/${id}/ && git commit -m "Backup ${id}"`,
+          'git push 到 GitHub',
+          '可选：压缩上传到 Google Drive',
+          '插入备份记录到数据库',
+          '发送通知到 Bot'
+        ],
+        tech: ['ssh2', 'node-scp', 'simple-git', 'googleapis'],
+        api: { method: 'POST', endpoint: `/api/nodes/${id}/backups` },
+        note: '备份时间取决于 workspace 大小，通常 10-30 秒'
+      },
+      restore: {
+        feature: `还原节点 ${id}`,
+        description: '从 GitHub 恢复配置到节点，需先选择备份点',
+        steps: [
+          '用户选择要还原的备份（通过 tag 或 commit hash）',
+          '⚠️ 确认提示："此操作会覆盖当前配置，是否继续？"',
+          '创建还原前快照 (rollback-pre)',
+          'git clone 或 pull ocm-backups 仓库',
+          `从 nodes/${id}/ 目录提取文件`,
+          'SSH 连接到节点',
+          'systemctl stop openclaw (停止服务)',
+          'SCP 上传文件到 ~/.openclaw/',
+          'chmod +x ~/.openclaw/bin/* (恢复权限)',
+          'systemctl start openclaw (重启服务)',
+          '等待 30s 健康检查',
+          '触发智力测试验证效果',
+          '记录还原操作到审计日志'
+        ],
+        tech: ['ssh2', 'simple-git', 'node-scp', 'systemctl'],
+        api: { method: 'POST', endpoint: `/api/nodes/${id}/restore` },
+        note: '还原后会自动触发智力测试，确保节点恢复正常'
+      },
+      restart: {
+        feature: `重启节点 ${id}`,
+        description: '通过 SSH 重启 OpenClaw 服务',
+        steps: [
+          `SSH 连接到 ${node?.host}`,
+          '执行 systemctl restart openclaw',
+          '等待服务启动（最多 30s）',
+          '检查服务状态：systemctl is-active openclaw',
+          '如果失败，尝试 kill 进程后重启',
+          '更新节点状态为 online/offline',
+          '记录到事件日志',
+          '发送通知'
+        ],
+        tech: ['ssh2', 'systemctl'],
+        api: { method: 'POST', endpoint: `/api/nodes/${id}/restart` },
+        note: '重启会中断正在进行的对话，谨慎操作'
+      },
+      test: {
+        feature: `智力测试 ${id}`,
+        description: '发送测试题到节点，由 LLM-as-Judge 评分',
+        steps: [
+          '从测试题库随机抽取 5 道题（每维度 1 道）',
+          '通过节点的 Bot 发送测试消息',
+          '记录响应时间和内容',
+          'LLM Judge (GPT-4) 评分：',
+          '  - 记忆一致性 (检查 MEMORY.md 引用) /20',
+          '  - 逻辑推理 (多步推理题) /20',
+          '  - 工具使用 (需要调用工具的任务) /20',
+          '  - 回复质量 (语言流畅度、准确性) /20',
+          '  - 人格一致性 (与 SOUL.md 对比) /20',
+          '汇总总分 /100',
+          '如果 < 80 分，触发告警',
+          '如果 < 60 分，建议自动回滚',
+          '保存评分到数据库',
+          '更新节点 last_score'
+        ],
+        tech: ['telegram-bot', 'openai', 'anthropic', 'sqlite3'],
+        api: { method: 'POST', endpoint: `/api/nodes/${id}/test` },
+        note: '测试会消耗约 $0.05-0.10 的 AI 费用'
+      },
+      restoreVersion: {
+        feature: `还原到此版本`,
+        description: '快速还原到选定的备份版本',
+        steps: [
+          '读取备份的 git_commit 或 git_tag',
+          '调用还原 API',
+          '(同 restore 流程)'
+        ],
+        tech: ['ssh2', 'simple-git', 'systemctl'],
+        api: { method: 'POST', endpoint: `/api/nodes/${id}/restore` },
+        note: '会先创建当前快照再还原'
+      },
+      restartBot: {
+        feature: `重启 Bot ${itemId}`,
+        description: 'SSH 重启节点上的 Bot 进程',
+        steps: [
+          `SSH 连接到 ${node?.host}`,
+          '查找 Bot 进程：ps aux | grep openclaw | grep <workspace>',
+          'kill -15 <pid> (优雅停止)',
+          '等待 5s',
+          '如果未停止，kill -9 <pid> (强制停止)',
+          '重新启动 Bot: openclaw start --workspace <path>',
+          '更新 Bot 状态为 running',
+          '记录操作'
+        ],
+        tech: ['ssh2', 'ps', 'kill', 'openclaw-cli'],
+        api: { method: 'POST', endpoint: `/api/bots/${itemId}/restart` },
+        note: 'Bot 会话会丢失，需要用户重新发起对话'
+      },
+      stopBot: {
+        feature: `停止 Bot ${itemId}`,
+        description: 'SSH 停止节点上的 Bot 进程',
+        steps: [
+          `SSH 连接到 ${node?.host}`,
+          '查找 Bot 进程',
+          'kill -15 <pid>',
+          '等待 5s 确认停止',
+          '更新 Bot 状态为 stopped'
+        ],
+        tech: ['ssh2', 'kill'],
+        api: { method: 'POST', endpoint: `/api/bots/${itemId}/stop` },
+        note: '停止后需要手动重启或通过 OCM 重启'
+      },
+      addKey: {
+        feature: '添加 API Key',
+        description: '输入 Key 信息，存入数据库，并同步到节点配置',
+        steps: [
+          '用户输入：provider, key_name, api_key, monthly_limit',
+          '插入到数据库 api_keys 表',
+          'SSH 连接到节点',
+          '读取 ~/.openclaw/config.yaml',
+          '添加或更新 keys 字段',
+          '写回配置文件',
+          'systemctl reload openclaw (热重载)',
+          '验证 Key 有效性 (可选)',
+          '发送通知'
+        ],
+        tech: ['sqlite3', 'ssh2', 'yaml', 'systemctl'],
+        api: { method: 'POST', endpoint: `/api/nodes/${id}/keys` },
+        note: 'Key 会加密存储，传输时使用 SSH'
+      }
+    };
+
+    const impl = implementations[type];
+    if (impl) {
+      setModalData(impl);
+      setModalOpen(true);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-8 text-gray-500">加载中...</div>;
+  }
+
+  if (!data || !data.node) {
+    return <div className="text-center py-8 text-red-500">节点不存在</div>;
+  }
+
+  const { node, backups, scores, events } = data;
+
+  return (
+    <div className="space-y-6 pb-20 md:pb-0">
+      <Link to="/nodes" className="inline-flex items-center text-blue-400 hover:text-blue-300">
+        ← 返回节点列表
+      </Link>
+
+      {/* 节点标题卡片 */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 shadow-lg">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-white">{node.id}</h1>
+            <p className="text-gray-400">{node.name}</p>
+          </div>
+          <div className={`px-4 py-2 rounded-full text-sm font-medium ${
+            node.status === 'online' ? 'bg-green-900/30 text-green-400 border border-green-700' :
+            'bg-red-900/30 text-red-400 border border-red-700'
+          }`}>
+            {node.status === 'online' ? '🟢 在线' : '🔴 离线'}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <div className="text-sm text-gray-400">CPU 使用率</div>
+            <div className="text-2xl font-bold text-white">{node.cpu_usage}%</div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-400">RAM 使用率</div>
+            <div className="text-2xl font-bold text-white">{node.ram_usage}%</div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-400">智力评分</div>
+            <div className={`text-2xl font-bold ${
+              node.last_score >= 90 ? 'text-green-400' :
+              node.last_score >= 70 ? 'text-yellow-400' :
+              'text-red-400'
+            }`}>
+              🧠 {node.last_score || '-'}
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-gray-400">OpenClaw 版本</div>
+            <div className="text-xl font-semibold text-white">{node.openclaw_version}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-lg">
+        <div className="border-b border-gray-700 overflow-x-auto">
+          <nav className="flex -mb-px">
+            {[
+              { key: 'overview', label: '📊 概览' },
+              { key: 'keys', label: '🔑 Keys' },
+              { key: 'bots', label: '🤖 Bots' },
+              { key: 'skills', label: '🛠️ Skills' },
+              { key: 'config', label: '⚙️ Config' },
+              { key: 'backups', label: '📦 备份' },
+              { key: 'scores', label: '🧠 智力' },
+              { key: 'events', label: '📋 事件' },
+            ].map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-4 md:px-6 py-3 text-xs md:text-sm font-medium whitespace-nowrap ${
+                  tab === t.key
+                    ? 'border-b-2 border-blue-600 text-blue-400'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <div className="p-4 md:p-6">
+          {/* Overview Tab */}
+          {tab === 'overview' && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-white mb-2">基本信息</h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">IP 地址:</span>
+                    <span className="text-white">{node.host}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">SSH 端口:</span>
+                    <span className="text-white">{node.port}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">SSH 用户:</span>
+                    <span className="text-white">{node.ssh_user}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">OpenClaw 路径:</span>
+                    <span className="text-xs text-white break-all">{node.openclaw_path}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div>
+                <h3 className="font-semibold text-white mb-2">快捷操作</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <button
+                    onClick={() => setConfirmDialog({
+                      isOpen: true,
+                      action: 'backup',
+                      data: null
+                    })}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors disabled:opacity-50"
+                  >
+                    💾 备份
+                  </button>
+                  <button
+                    onClick={handleRestoreNavigation}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors disabled:opacity-50"
+                    title="跳转到备份页面选择要还原的备份"
+                  >
+                    🔄 还原
+                  </button>
+                  <button
+                    onClick={() => setConfirmDialog({
+                      isOpen: true,
+                      action: 'restart',
+                      data: null
+                    })}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm rounded transition-colors disabled:opacity-50"
+                  >
+                    ⚡ 重启
+                  </button>
+                  <button
+                    onClick={() => setConfirmDialog({
+                      isOpen: true,
+                      action: 'test',
+                      data: null
+                    })}
+                    disabled={actionLoading}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded transition-colors disabled:opacity-50"
+                  >
+                    🧠 智力测试
+                  </button>
+                  <button                    onClick={() => setConfirmDialog({                      isOpen: true,                      action: 'delete',                      data: null                    })}                    disabled={actionLoading}                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors disabled:opacity-50"                  >                    🗑️ 退役                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Keys Tab */}
+          {tab === 'keys' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-semibold text-white">API Keys</h3>
+                <button 
+                  onClick={() => showImplementation('addKey')}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                >
+                  + 添加Key
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-900 text-xs text-gray-400 uppercase border-b border-gray-700">
+                    <tr>
+                      <th className="px-3 md:px-4 py-2 text-left">Provider</th>
+                      <th className="px-3 md:px-4 py-2 text-left">名称</th>
+                      <th className="px-3 md:px-4 py-2 text-left hidden md:table-cell">Key</th>
+                      <th className="px-3 md:px-4 py-2 text-center">状态</th>
+                      <th className="px-3 md:px-4 py-2 text-right hidden lg:table-cell">用量/限额</th>
+                      <th className="px-3 md:px-4 py-2 text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-700">
+                    {keys.map(key => (
+                      <tr key={key.id} className="hover:bg-gray-700/50">
+                        <td className="px-3 md:px-4 py-3">
+                          <span className={`text-xs px-2 py-1 rounded ${getProviderColor(key.provider)}`}>
+                            {getProviderName(key.provider)}
+                          </span>
+                        </td>
+                        <td className="px-3 md:px-4 py-3 text-white">{key.key_name}</td>
+                        <td className="px-3 md:px-4 py-3 font-mono text-xs text-gray-400 hidden md:table-cell">
+                          {maskKey(key.api_key)}
+                        </td>
+                        <td className="px-3 md:px-4 py-3 text-center text-lg">
+                          {getStatusIcon(key.status)}
+                        </td>
+                        <td className="px-3 md:px-4 py-3 text-xs text-right text-white hidden lg:table-cell">
+                          {key.monthly_limit ? (
+                            <span>${key.monthly_used?.toFixed(0) || '0'} / ${key.monthly_limit}</span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-3 md:px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleVerifyKey(key.id)}
+                            className="text-blue-400 hover:text-blue-300 text-xs"
+                          >
+                            验证
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Bots Tab - Phase 7 Enhanced */}
+          {tab === 'bots' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="font-semibold text-white">Bots & Agents</h3>
+                <div className="flex space-x-2">
+                  <button 
+                    onClick={handleSyncAgents}
+                    disabled={actionLoading}
+                    className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700 disabled:opacity-50"
+                  >
+                    🔄 同步Agent
+                  </button>
+                  <button 
+                    onClick={() => setShowAddBotModal(true)}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                  >
+                    + 添加Bot
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {bots.map(bot => {
+                  const isSelected = selectedBotId === bot.id;
+                  const latestMemory = botMemoryHealth.length > 0 ? botMemoryHealth[0] : null;
+                  const activeSessions = botSessions.filter(s => s.is_active).length;
+                  const enabledCrons = botCronJobs.filter(c => c.enabled).length;
+                  
+                  return (
+                    <div key={bot.id} className="bg-gray-900 border border-gray-700 rounded-lg p-6 shadow-lg">
+                      {/* Bot Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center space-x-3">
+                          <span className="text-2xl">🤖</span>
+                          <div>
+                            <div className="font-bold text-lg text-white">
+                              {bot.name || bot.bot_name || bot.agent_id}
+                            </div>
+                            <div className="text-sm text-gray-400">
+                              Agent ID: {bot.agent_id || 'unknown'}
+                            </div>
+                            {bot.description && (
+                              <div className="text-xs text-gray-500 mt-1">{bot.description}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            bot.status === 'running' ? 'bg-green-900/30 text-green-400' :
+                            bot.status === 'stopped' ? 'bg-red-900/30 text-red-400' :
+                            'bg-yellow-900/30 text-yellow-400'
+                          }`}>
+                            {bot.status}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Agent Identity */}
+                      {bot.user_name && (
+                        <div className="mb-3 p-2 bg-gray-50 rounded text-xs">
+                          <div className="text-gray-500 mb-1">Agent for:</div>
+                          <div className="font-medium text-gray-900">{bot.user_name}</div>
+                          {bot.soul_summary && (
+                            <div className="text-gray-600 mt-1">{bot.soul_summary}</div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Stats Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
+                        <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                          <div className="text-gray-400 text-xs">Sessions</div>
+                          <div className="font-semibold text-white text-lg">
+                            {isSelected ? `${activeSessions}/${botSessions.length}` : bot.session_count || 0}
+                          </div>
+                        </div>
+                        <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                          <div className="text-gray-400 text-xs">Cron Jobs</div>
+                          <div className="font-semibold text-white text-lg">
+                            {isSelected ? `${enabledCrons}/${botCronJobs.length}` : bot.cron_count || 0}
+                          </div>
+                        </div>
+                        <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                          <div className="text-gray-400 text-xs">Memory</div>
+                          <div className={`font-semibold text-lg ${
+                            latestMemory?.health_status === 'healthy' ? 'text-green-400' :
+                            latestMemory?.health_status === 'warning' ? 'text-yellow-400' :
+                            'text-white'
+                          }`}>
+                            {isSelected && latestMemory ? (
+                              <>
+                                {(latestMemory.total_memory_size / 1024).toFixed(0)}KB
+                                {latestMemory.health_status === 'warning' && ' ⚠️'}
+                              </>
+                            ) : '-'}
+                          </div>
+                        </div>
+                        <div className="p-3 bg-gray-800 border border-gray-700 rounded-lg">
+                          <div className="text-gray-400 text-xs">Model</div>
+                          <div className="font-semibold text-white text-sm truncate">
+                            {bot.model?.split('/')[1] || 'claude-sonnet-4'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Workspace Files */}
+                      {bot.workspace_files && (
+                        <div className="mb-3 text-xs">
+                          <div className="text-gray-500 mb-1">Workspace Files:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {JSON.parse(bot.workspace_files || '[]').map((file, idx) => (
+                              <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded">
+                                {file}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Expandable Details */}
+                      {isSelected && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                          {/* Sessions */}
+                          <div>
+                            <div className="text-xs font-medium text-gray-700 mb-1">
+                              Sessions ({botSessions.length})
+                            </div>
+                            <div className="space-y-1">
+                              {botSessions.slice(0, 3).map(session => (
+                                <div key={session.id} className="flex items-center justify-between text-xs bg-gray-50 px-2 py-1 rounded">
+                                  <span className="flex items-center space-x-1">
+                                    <span>{session.session_type === 'main' ? '💬' : session.session_type === 'cron' ? '⏰' : '🔀'}</span>
+                                    <span>{session.display_name}</span>
+                                  </span>
+                                  <span className={session.is_active ? 'text-green-600' : 'text-gray-400'}>
+                                    {session.is_active ? '●' : '○'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Cron Jobs */}
+                          <div>
+                            <div className="text-xs font-medium text-gray-700 mb-1">
+                              Cron Jobs ({botCronJobs.length})
+                            </div>
+                            <div className="space-y-1">
+                              {botCronJobs.slice(0, 3).map(job => (
+                                <div key={job.id} className="flex items-center justify-between text-xs bg-gray-50 px-2 py-1 rounded">
+                                  <span className="truncate">{job.job_name}</span>
+                                  <span className={job.enabled ? 'text-green-600' : 'text-gray-400'}>
+                                    {job.enabled ? '✅' : '⏸️'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Memory Health */}
+                          {latestMemory && latestMemory.health_status === 'warning' && (
+                            <div className="text-xs p-2 bg-yellow-50 border border-yellow-200 rounded">
+                              <div className="font-medium text-yellow-800 mb-1">⚠️ Memory Warning</div>
+                              {JSON.parse(latestMemory.issues || '[]').map((issue, idx) => (
+                                <div key={idx} className="text-yellow-700">{issue}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex justify-between items-center mt-4 pt-3 border-t border-gray-700">
+                        <div className="text-xs text-gray-400">
+                          最后更新: {new Date(bot.updated_at).toLocaleString('zh-CN')}
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => setSelectedBotId(isSelected ? null : bot.id)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                          >
+                            {isSelected ? '收起 ▲' : '详情 ▼'}
+                          </button>
+                          <button 
+                            onClick={() => setConfirmDialog({
+                              isOpen: true,
+                              action: 'restart-bot',
+                              data: { botId: bot.id, botName: bot.name }
+                            })}
+                            disabled={actionLoading}
+                            className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs rounded transition-colors disabled:opacity-50"
+                          >
+                            🔄 重启
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Skills Tab - Phase 7 */}
+          {tab === 'skills' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold">Skills & Tools</h3>
+                <div className="text-sm text-gray-600">
+                  {skills.filter(s => s.source === 'bundled').length} bundled + {' '}
+                  {skills.filter(s => s.source === 'custom' || s.source === 'workspace').length} custom
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {skills.map(skill => (
+                  <div key={skill.id} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xl">
+                          {skill.source === 'bundled' ? '📦' : '⚙️'}
+                        </span>
+                        <div>
+                          <div className="font-semibold text-gray-900">{skill.skill_name}</div>
+                          <div className="text-xs text-gray-500">{skill.source}</div>
+                        </div>
+                      </div>
+                      {skill.version && (
+                        <span className="text-xs px-2 py-0.5 bg-gray-100 rounded">
+                          {skill.version}
+                        </span>
+                      )}
+                    </div>
+                    {skill.description && (
+                      <div className="text-xs text-gray-600 mb-2">{skill.description}</div>
+                    )}
+                    <div className="text-xs text-gray-400 break-all">
+                      {skill.skill_path}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {skills.length === 0 && (
+                <div className="text-center py-8 text-gray-400">暂无Skills</div>
+              )}
+            </div>
+          )}
+
+          {/* Config Tab - Phase 7 */}
+          {tab === 'config' && (
+            <div className="space-y-4">
+              <h3 className="font-semibold">Gateway Configuration</h3>
+
+              {gatewayConfig && gatewayConfig.node_id ? (
+                <>
+                  {/* Channels */}
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Channels</div>
+                    <div className="flex flex-wrap gap-2">
+                      {['telegram', 'discord', 'whatsapp', 'slack'].map(ch => {
+                        const channels = JSON.parse(gatewayConfig.channels || '[]');
+                        const enabled = channels.includes(ch);
+                        return (
+                          <div
+                            key={ch}
+                            className={`px-3 py-2 rounded text-sm font-medium ${
+                              enabled
+                                ? 'bg-green-100 text-green-700 border border-green-300'
+                                : 'bg-gray-100 text-gray-400 border border-gray-200'
+                            }`}
+                          >
+                            {ch.charAt(0).toUpperCase() + ch.slice(1)} {enabled ? '✅' : '❌'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Model */}
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Default Model</div>
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm font-mono">
+                      {gatewayConfig.default_model || '-'}
+                    </div>
+                  </div>
+
+                  {/* Heartbeat */}
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Heartbeat</div>
+                    <div className="flex items-center space-x-3">
+                      <div className={`px-3 py-2 rounded text-sm font-medium ${
+                        gatewayConfig.heartbeat_enabled
+                          ? 'bg-green-100 text-green-700 border border-green-300'
+                          : 'bg-gray-100 text-gray-400 border border-gray-200'
+                      }`}>
+                        {gatewayConfig.heartbeat_enabled ? '✅ Enabled' : '❌ Disabled'}
+                      </div>
+                      {gatewayConfig.heartbeat_enabled && gatewayConfig.heartbeat_interval && (
+                        <div className="text-sm text-gray-600">
+                          Interval: <span className="font-medium">{gatewayConfig.heartbeat_interval}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Workspace Path */}
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Agent Workspace</div>
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-xs font-mono break-all">
+                      {gatewayConfig.agent_workspace || '-'}
+                    </div>
+                  </div>
+
+                  {/* JSON Preview */}
+                  <div>
+                    <div className="text-sm font-medium text-gray-700 mb-2">Config JSON</div>
+                    <pre className="px-3 py-2 bg-gray-900 text-gray-100 rounded text-xs overflow-x-auto">
+                      {gatewayConfig.config_json ? JSON.stringify(JSON.parse(gatewayConfig.config_json), null, 2) : '{}'}
+                    </pre>
+                  </div>
+
+                  {/* Fetched At */}
+                  <div className="text-xs text-gray-500">
+                    Last fetched: {new Date(gatewayConfig.fetched_at).toLocaleString('zh-CN')}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-400">配置未加载</div>
+              )}
+            </div>
+          )}
+
+          {/* Backups Tab */}
+          {tab === 'backups' && (
+            <div className="space-y-2">
+              {backups.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">暂无备份</div>
+              ) : (
+                backups.slice((backupsPage - 1) * pageSize, backupsPage * pageSize).map(backup => (
+                  <div key={backup.id} className="border border-gray-200 rounded p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs px-2 py-1 bg-gray-100 rounded">{backup.type}</span>
+                        {backup.is_stable && (
+                          <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">✅ stable</span>
+                        )}
+                        {backup.score && (
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            backup.score >= 90 ? 'bg-green-100 text-green-800' :
+                            backup.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
+                            🧠 {backup.score}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(backup.created_at).toLocaleString('zh-CN')}
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 space-y-1">
+                      {backup.git_tag && <div>Tag: {backup.git_tag}</div>}
+                      <div>Commit: {backup.git_commit?.substring(0, 8)}</div>
+                      <div>{backup.file_count} 文件 · {(backup.total_size / 1024 / 1024).toFixed(2)} MB</div>
+                    </div>
+                    <button
+                      onClick={() => showImplementation('restoreVersion', backup.id)}
+                      className="mt-2 px-3 py-1 bg-green-50 text-green-600 text-xs rounded hover:bg-green-100"
+                    >
+                      🔄 还原到此版本
+                    </button>
+                  </div>
+                ))
+              )}
+              
+              {/* 备份分页 */}
+              {backups.length > pageSize && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
+                  <span>共 {backups.length} 条，第 {backupsPage}/{Math.ceil(backups.length / pageSize)} 页</span>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setBackupsPage(p => Math.max(1, p - 1))}
+                      disabled={backupsPage === 1}
+                      className="px-3 py-1 bg-gray-50 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >上一页</button>
+                    <button
+                      onClick={() => setBackupsPage(p => Math.min(Math.ceil(backups.length / pageSize), p + 1))}
+                      disabled={backupsPage === Math.ceil(backups.length / pageSize)}
+                      className="px-3 py-1 bg-gray-50 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >下一页</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Scores Tab */}
+          {tab === 'scores' && (
+            <div className="space-y-2">
+              {scores.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">暂无评分</div>
+              ) : (
+                scores.slice((scoresPage - 1) * pageSize, scoresPage * pageSize).map(score => (
+                  <div key={score.id} className="border border-gray-200 rounded p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className={`text-2xl font-bold ${
+                        score.total_score >= 90 ? 'text-green-600' :
+                        score.total_score >= 70 ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        🧠 {score.total_score}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(score.created_at).toLocaleString('zh-CN')}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                      <div>
+                        <div className="text-gray-500">记忆</div>
+                        <div className="font-medium">{score.memory_score}/20</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">逻辑</div>
+                        <div className="font-medium">{score.logic_score}/20</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">工具</div>
+                        <div className="font-medium">{score.tool_score}/20</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">质量</div>
+                        <div className="font-medium">{score.quality_score}/20</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">人格</div>
+                        <div className="font-medium">{score.personality_score}/20</div>
+                      </div>
+                    </div>
+                    {score.action_taken !== 'none' && (
+                      <div className="mt-2 text-xs px-2 py-1 bg-orange-100 text-orange-800 rounded">
+                        ⚠️ {score.action_taken}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              
+              {/* 评分分页 */}
+              {scores.length > pageSize && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
+                  <span>共 {scores.length} 条，第 {scoresPage}/{Math.ceil(scores.length / pageSize)} 页</span>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setScoresPage(p => Math.max(1, p - 1))}
+                      disabled={scoresPage === 1}
+                      className="px-3 py-1 bg-gray-50 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >上一页</button>
+                    <button
+                      onClick={() => setScoresPage(p => Math.min(Math.ceil(scores.length / pageSize), p + 1))}
+                      disabled={scoresPage === Math.ceil(scores.length / pageSize)}
+                      className="px-3 py-1 bg-gray-50 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >下一页</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Events Tab */}
+          {tab === 'events' && (
+            <div className="space-y-2">
+              {events.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">暂无事件</div>
+              ) : (
+                events.slice((eventsPage - 1) * pageSize, eventsPage * pageSize).map(event => (
+                  <div key={event.id} className="flex items-start space-x-3 text-sm py-2 border-b border-gray-100 last:border-0">
+                    <span className={`flex-shrink-0 ${
+                      event.severity === 'error' ? 'text-red-500' :
+                      event.severity === 'warn' ? 'text-orange-500' :
+                      'text-gray-400'
+                    }`}>
+                      {event.severity === 'error' ? '🔴' :
+                       event.severity === 'warn' ? '⚠️' :
+                       'ℹ️'}
+                    </span>
+                    <div className="flex-1">
+                      <div className="text-gray-700">{event.message}</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {new Date(event.created_at).toLocaleString('zh-CN')}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              
+              {/* 事件分页 */}
+              {events.length > pageSize && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
+                  <span>共 {events.length} 条，第 {eventsPage}/{Math.ceil(events.length / pageSize)} 页</span>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => setEventsPage(p => Math.max(1, p - 1))}
+                      disabled={eventsPage === 1}
+                      className="px-3 py-1 bg-gray-50 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >上一页</button>
+                    <button
+                      onClick={() => setEventsPage(p => Math.min(Math.ceil(events.length / pageSize), p + 1))}
+                      disabled={eventsPage === Math.ceil(events.length / pageSize)}
+                      className="px-3 py-1 bg-gray-50 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >下一页</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Implementation Modal */}
+      <ImplementationModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        data={modalData}
+      />
+
+      {/* Add Bot Modal */}
+      <AddBotModal
+        isOpen={showAddBotModal}
+        onClose={() => setShowAddBotModal(false)}
+        onSuccess={fetchBots}
+        nodeId={id}
+      />
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ isOpen: false, action: null, data: null })}
+        onConfirm={() => {
+          if (confirmDialog.action === 'restart-bot') {
+            handleBotRestart(confirmDialog.data.botId);
+          } else {
+            handleNodeAction(confirmDialog.action);
+          }
+        }}
+        title={
+          confirmDialog.action === 'backup' ? '确认备份' :
+          confirmDialog.action === 'restart' ? '确认重启' :
+          confirmDialog.action === 'test' ? '确认测试' :
+          confirmDialog.action === 'delete' ? '确认删除节点' :
+          confirmDialog.action === 'restart-bot' ? '确认重启 Bot' :
+          '确认操作'
+        }
+        message={
+          confirmDialog.action === 'backup' ? `确定要备份节点 ${id} 吗？` :
+          confirmDialog.action === 'restart' ? `确定要重启节点 ${id} 吗？这会中断正在进行的会话。` :
+          confirmDialog.action === 'test' ? `确定要对节点 ${id} 进行智力测试吗？预计需要 1-2 分钟。` :
+          confirmDialog.action === 'delete' ? `⚠️ 警告：即将删除节点 ${id}！
+
+此操作将：
+• 停止OpenClaw服务
+• 备份所有数据
+• 清理运行时文件  
+• 从管理列表中移除
+
+此操作不可逆，确定要继续吗？` :
+          confirmDialog.action === 'restart-bot' ? `确定要重启 Bot ${confirmDialog.data?.botName} 吗？` :
+          '确定要执行此操作吗？'
+        }
+        confirmText={
+          confirmDialog.action === 'delete' ? '确认删除' :
+          confirmDialog.action === 'restart' || confirmDialog.action === 'restart-bot' ? '确认重启' :
+          confirmDialog.action === 'test' ? '开始测试' :
+          '确认'
+        }
+        confirmColor={
+          confirmDialog.action === 'delete' ? 'red' :
+          confirmDialog.action === 'restart' || confirmDialog.action === 'restart-bot' ? 'red' : 'blue'
+        }
+        loading={actionLoading}
+      />
+    </div>
+  );
+}
+
+export default NodeDetail;
