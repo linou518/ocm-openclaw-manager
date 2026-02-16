@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>Simple Test</title></head>
+<body>
+<h1>Simple HTML Test</h1>
+<p>If you can see this, static serving works</p>
+<script>
+console.log("Simple script works");
+fetch("/api/nodes/pc-b")
+  .then(res => res.json())  
+  .then(data => console.log("API works:", data.node.id))
+  .catch(err => console.log("API failed:", err));
+</script>
+</body>
+</html>

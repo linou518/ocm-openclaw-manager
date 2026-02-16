@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OCM Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; border: 1px solid #ccc; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>OCM Debug Test - PC-B Node</h1>
+    
+    <div class="debug">
+        <h3>API Test</h3>
+        <div id="api-result">Loading...</div>
+    </div>
+    
+    <div class="debug">
+        <h3>React App Test</h3>
+        <div id="react-test">Testing if React renders...</div>
+    </div>
+    
+    <script>
+        console.log('Debug script starting...');
+        
+        // Test API call
+        fetch('/api/nodes/pc-b')
+            .then(res => {
+                console.log('API Response status:', res.status);
+                return res.json();
+            })
+            .then(data => {
+                console.log('API Data received:', data);
+                document.getElementById('api-result').innerHTML = 
+                    '<span class="success">API Success</span><br>' +
+                    'Node: ' + data.node.id + '<br>' +
+                    'Status: ' + data.node.status + '<br>' +
+                    'Version: ' + (data.node.openclaw_version || 'NULL') + '<br>' +
+                    'Has node object: ' + (!!data.node);
+                    
+                // Try to simulate the React condition
+                if (!data || !data.node) {
+                    document.getElementById('react-test').innerHTML = 
+                        '<span class="error">React would show: 节点不存在</span>';
+                } else {
+                    document.getElementById('react-test').innerHTML = 
+                        '<span class="success">React should render node details</span>';
+                }
+            })
+            .catch(err => {
+                console.error('API Error:', err);
+                document.getElementById('api-result').innerHTML = 
+                    '<span class="error">API Error: ' + err.message + '</span>';
+                document.getElementById('react-test').innerHTML = 
+                    '<span class="error">React would fail due to API error</span>';
+            });
+    </script>
+</body>
+</html>

@@ -55,13 +55,18 @@ function NodeDetail() {
   }, [selectedBotId]);
 
   const fetchNodeDetail = async () => {
+    console.log('🔍 NodeDetail: fetchNodeDetail called for id:', id);
     try {
+      console.log('📡 NodeDetail: Making API call to /api/nodes/' + id);
       const res = await fetch(`/api/nodes/${id}`);
+      console.log('📋 NodeDetail: Response status:', res.status);
       const json = await res.json();
+      console.log('🎯 NodeDetail: Data received:', json);
+      console.log('❓ NodeDetail: Has node?', !!json.node);
       setData(json);
       setLoading(false);
     } catch (error) {
-      console.error('Failed to fetch node detail:', error);
+      console.error('❌ NodeDetail: Failed to fetch node detail:', error);
       setLoading(false);
     }
   };
@@ -489,9 +494,15 @@ function NodeDetail() {
     return <div className="text-center py-8 text-gray-500">加载中...</div>;
   }
 
+  console.log('🔎 NodeDetail: Render check - data:', data);
+  console.log('🔎 NodeDetail: Render check - data.node:', data?.node);
+  
   if (!data || !data.node) {
+    console.log('❌ NodeDetail: Rendering "节点不存在" because data or data.node is missing');
     return <div className="text-center py-8 text-red-500">节点不存在</div>;
   }
+  
+  console.log('✅ NodeDetail: All checks passed, rendering node details for:', data.node.id);
 
   const { node, backups, scores, events } = data;
 
