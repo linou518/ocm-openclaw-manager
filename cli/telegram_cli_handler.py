@@ -14,15 +14,30 @@ import sqlite3
 import json
 from datetime import datetime
 from pathlib import Path
+import sys
+import os
+
+# 添加当前目录到Python路径
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from config import TELEGRAM_BOT_TOKEN, ADMIN_USER_IDS, DB_PATH, NODE_TEMPLATES, validate_config
+from core.ssh_manager import SSHConnectionManager
+from core.backup_engine import BackupEngine
 
 # 配置日志
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class OCMTelegramCLI:
-    def __init__(self, db_path="/home/linou/shared/ocm-project/ocm.db"):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        self.db_path = db_path or DB_PATH
+        self.ssh_manager = SSHConnectionManager()
+        self.backup_engine = BackupEngine(self.db_path)
         self.init_database()
+    
+    def is_admin(self, user_id: int) -> bool:
+        """检查用户是否为管理员"""
+        return user_id in ADMIN_USER_IDS
     
     def init_database(self):
         """初始化数据库表结构"""
@@ -64,6 +79,11 @@ class OCMTelegramCLI:
     
     async def newnode_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理/newnode命令 - 添加新节点"""
+        # 权限检查
+        if not self.is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ 权限不足，仅管理员可使用此功能")
+            return
+            
         keyboard = [
             [InlineKeyboardButton("🆕 开始添加节点", callback_data="newnode_start")],
             [InlineKeyboardButton("📖 查看帮助", callback_data="newnode_help")]
@@ -87,6 +107,11 @@ class OCMTelegramCLI:
     
     async def mynode_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理/mynode命令 - 节点管理界面"""
+        # 权限检查
+        if not self.is_admin(update.effective_user.id):
+            await update.message.reply_text("❌ 权限不足，仅管理员可使用此功能")
+            return
+            
         # 从数据库获取所有节点
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -124,6 +149,12 @@ class OCMTelegramCLI:
     async def callback_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """处理内联键盘回调"""
         query = update.callback_query
+        
+        # 权限检查
+        if not self.is_admin(query.from_user.id):
+            await query.answer("❌ 权限不足", show_alert=True)
+            return
+            
         await query.answer()
         
         data = query.data
@@ -300,8 +331,18 @@ class OCMTelegramCLI:
         app.run_polling()
 
 if __name__ == "__main__":
-    # 配置您的Telegram Bot Token
-    BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+    # 验证配置
+    config_issues = validate_config()
+    if config_issues:
+        print("❌ 配置验证失败:")
+        for issue in config_issues:
+            print(f"  {issue}")
+        print("\n📝 请修复配置问题后重新运行")
+        sys.exit(1)
+    
+    print("✅ 配置验证通过，启动OCM CLI Bot...")
+    print(f"📊 管理员用户: {ADMIN_USER_IDS}")
+    print(f"🗄️ 数据库: {DB_PATH}")
     
     cli = OCMTelegramCLI()
-    cli.run(BOT_TOKEN)
+    cli.run(TELEGRAM_BOT_TOKEN)
