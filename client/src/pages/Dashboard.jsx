@@ -1,272 +1,212 @@
-import React, { useState, useEffect } from 'react';
-import NodeCard from '../components/NodeCard';
-import { Link } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import ImplementationModal from '../components/ImplementationModal';
+import React, { useState, useEffect, useCallback } from 'react';
 
-function Dashboard() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [modalData, setModalData] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
+const PRIORITY_COLORS = { P1: 'bg-red-500', P2: 'bg-yellow-500', P3: 'bg-blue-500' };
+const BLOCK_COLORS = { meeting: 'bg-purple-500/30 border-purple-500/50', task: 'bg-blue-500/30 border-blue-500/50', fixed: 'bg-gray-500/30 border-gray-500/50', break: 'bg-green-500/30 border-green-500/50' };
 
-  useEffect(() => {
-    fetchDashboard();
-    const interval = setInterval(fetchDashboard, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchDashboard = async () => {
-    try {
-      const res = await fetch('/api/dashboard');
-      const json = await res.json();
-      setData(json);
-      setLoading(false);
-    } catch (error) {
-      console.error('Failed to fetch dashboard:', error);
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400 text-lg">加载中...</div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-red-400 text-lg">加载失败</div>
-      </div>
-    );
-  }
-
-  const { overview, nodes, events, trendData } = data;
-
-  const statCards = [
-    { 
-      label: '在线节点', 
-      value: `${overview.onlineCount}/${overview.totalNodes}`, 
-      icon: '🖥️', 
-      color: 'text-green-400',
-      bg: 'bg-green-900/20',
-      trend: '+0',
-    },
-    { 
-      label: 'Sessions', 
-      value: `${overview.activeSessions}/${overview.totalSessions}`, 
-      icon: '💬', 
-      color: 'text-blue-400',
-      bg: 'bg-blue-900/20',
-      trend: 'active',
-      subtitle: '活跃会话'
-    },
-    { 
-      label: 'Cron Jobs', 
-      value: `${overview.enabledCronJobs}/${overview.totalCronJobs}`, 
-      icon: '⏰', 
-      color: 'text-cyan-400',
-      bg: 'bg-cyan-900/20',
-      trend: 'enabled',
-      subtitle: '启用任务'
-    },
-    { 
-      label: 'Skills', 
-      value: overview.totalSkills, 
-      icon: '🛠️', 
-      color: 'text-purple-400',
-      bg: 'bg-purple-900/20',
-      trend: '+2',
-      subtitle: '技能总数'
-    },
-    { 
-      label: 'Memory', 
-      value: overview.memoryWarnings > 0 ? `⚠️ ${overview.memoryWarnings}` : '✅', 
-      icon: '📝', 
-      color: overview.memoryWarnings > 0 ? 'text-yellow-400' : 'text-green-400',
-      bg: overview.memoryWarnings > 0 ? 'bg-yellow-900/20' : 'bg-green-900/20',
-      trend: overview.memoryWarnings > 0 ? 'warn' : 'ok',
-      subtitle: '记忆健康'
-    },
-  ];
-
-  const formatEventTime = (timestamp) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diff = now - date;
-    const hours = Math.floor(diff / 3600000);
-    if (hours > 24) return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
-    if (hours > 0) return `${hours}小时前`;
-    const minutes = Math.floor(diff / 60000);
-    if (minutes > 0) return `${minutes}分钟前`;
-    return '刚刚';
-  };
-
-  const getSeverityColor = (severity) => {
-    const colors = {
-      critical: 'text-red-400 bg-red-900/30 border-red-700',
-      error: 'text-orange-400 bg-orange-900/30 border-orange-700',
-      warn: 'text-yellow-400 bg-yellow-900/30 border-yellow-700',
-      info: 'text-blue-400 bg-blue-900/30 border-blue-700',
-    };
-    return colors[severity] || colors.info;
-  };
-
-  const showClusterBackupImpl = () => {
-    setModalData({
-      feature: '全集群备份',
-      description: '一键备份所有在线节点的配置和 workspace 到 GitHub',
-      steps: [
-        '遍历所有在线节点',
-        '并行执行各节点备份（每节点串行）',
-        'SSH 连接到节点，执行 ocm-agent backup',
-        '打包 ~/.openclaw/ 配置文件和 workspace/',
-        'SCP 下载到 Master 节点的 ocm-backups/ 目录',
-        'git add nodes/<node-name>/ && git commit',
-        'git push 到 GitHub (ocm-backups 仓库)',
-        '可选：压缩上传到 Google Drive',
-        '更新数据库备份记录',
-        '发送完成通知到 Bot'
-      ],
-      tech: ['ssh2', 'node-scp', 'simple-git', 'googleapis', 'sqlite3'],
-      api: { method: 'POST', endpoint: '/api/cluster/backup' },
-      note: '备份是并行的，但每个节点内部操作是串行的。失败的节点会跳过并记录。'
-    });
-    setModalOpen(true);
-  };
-
+function Clock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  const weekdays = ['日','月','火','水','木','金','土'];
   return (
-    <div className="space-y-6 pb-20 md:pb-0">
-      {/* Header Actions */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-3 sm:space-y-0">
-        <h1 className="text-2xl font-bold text-white">集群概览</h1>
-        <button
-          onClick={showClusterBackupImpl}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
-        >
-          <span>💾</span>
-          <span>全集群备份</span>
-        </button>
-      </div>
-
-      {/* 统计卡片 */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-        {statCards.map((stat, idx) => (
-          <div 
-            key={idx} 
-            className={`${stat.bg} rounded-lg border border-gray-700 p-3 md:p-4 shadow-lg hover:shadow-xl transition-all`}
-          >
-            <div className="flex items-start justify-between mb-2">
-              <span className="text-2xl md:text-3xl">{stat.icon}</span>
-              {stat.trend && (
-                <span className="text-[9px] md:text-xs text-gray-400">{stat.trend}</span>
-              )}
-            </div>
-            <div className={`text-xl md:text-2xl font-bold ${stat.color} mb-1`}>
-              {stat.value}
-            </div>
-            <div className="text-[10px] md:text-xs text-gray-400">{stat.subtitle || stat.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* 节点网格 */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white">节点状态</h2>
-          <Link to="/nodes" className="text-sm text-blue-400 hover:text-blue-300">
-            查看全部 →
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {nodes.map(node => (
-            <NodeCard key={node.id} node={node} />
-          ))}
-        </div>
-      </div>
-
-      {/* 底部双栏 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 智力趋势图 */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 shadow-lg">
-          <h2 className="text-lg font-bold text-white mb-4">智力趋势（最近7天）</h2>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={trendData || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis 
-                dataKey="date" 
-                tick={{ fontSize: 12, fill: '#9CA3AF' }} 
-                stroke="#4B5563"
-              />
-              <YAxis 
-                domain={[0, 100]} 
-                tick={{ fontSize: 12, fill: '#9CA3AF' }}
-                stroke="#4B5563"
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1F2937', 
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  color: '#F3F4F6'
-                }}
-              />
-              <Legend wrapperStyle={{ color: '#9CA3AF' }} />
-              {nodes.filter(n => n.status === 'online').slice(0, 4).map((node, idx) => (
-                <Line
-                  key={node.id}
-                  type="monotone"
-                  dataKey={node.id}
-                  name={node.id}
-                  stroke={['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'][idx % 4]}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* 最近事件 */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-white">最近事件</h2>
-            <Link to="/events" className="text-sm text-blue-400 hover:text-blue-300">
-              查看全部 →
-            </Link>
-          </div>
-          <div className="space-y-3 max-h-[250px] overflow-y-auto">
-            {events.slice(0, 5).map((event, idx) => (
-              <div 
-                key={event.id}
-                className={`p-3 rounded-lg border ${getSeverityColor(event.severity)} text-sm`}
-              >
-                <div className="flex items-start justify-between mb-1">
-                  <span className="font-medium">{event.node_id || '全局'}</span>
-                  <span className="text-xs text-gray-500">{formatEventTime(event.created_at)}</span>
-                </div>
-                <div className="text-gray-300">{event.message}</div>
-              </div>
-            ))}
-            {events.length === 0 && (
-              <div className="text-center text-gray-500 py-8">暂无事件</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Implementation Modal */}
-      <ImplementationModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-        data={modalData}
-      />
+    <div className="text-right">
+      <div className="text-2xl font-bold text-white font-mono">{now.toLocaleTimeString('ja-JP',{hour12:false})}</div>
+      <div className="text-sm text-gray-400">{now.getFullYear()}/{String(now.getMonth()+1).padStart(2,'0')}/{String(now.getDate()).padStart(2,'0')} ({weekdays[now.getDay()]})</div>
     </div>
   );
 }
 
-export default Dashboard;
+function Timeline({ scheduleBlocks, meetings }) {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
+  
+  const START_HOUR = 5, END_HOUR = 18, TOTAL_MINS = (END_HOUR - START_HOUR) * 60;
+  const toPercent = (h, m) => Math.max(0, Math.min(100, ((h * 60 + m) - START_HOUR * 60) / TOTAL_MINS * 100));
+  const nowPercent = toPercent(now.getHours(), now.getMinutes());
+  
+  const isWeekday = now.getDay() >= 1 && now.getDay() <= 5;
+  const fixedBlocks = isWeekday ? [
+    { start: '07:00', end: '08:30', label: '🚸 送孩子上学', type: 'fixed' },
+    { start: '12:00', end: '13:00', label: '🍱 午休', type: 'break' }
+  ] : [];
+  
+  const meetingBlocks = (meetings || []).map(m => ({
+    start: m.time, end: m.endTime || m.time, label: `📅 ${m.title}`, type: 'meeting'
+  }));
+  
+  const allBlocks = [...fixedBlocks, ...(scheduleBlocks || []), ...meetingBlocks];
+  
+  const parseTime = (t) => { const [h,m] = t.split(':').map(Number); return { h, m }; };
+
+  return (
+    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+      <h3 className="text-sm font-medium text-gray-400 mb-3">📅 今日タイムライン</h3>
+      <div className="relative h-16 bg-gray-950 rounded-lg overflow-hidden">
+        {/* Hour markers */}
+        {Array.from({length: END_HOUR - START_HOUR + 1}, (_, i) => i + START_HOUR).map(h => (
+          <div key={h} className="absolute top-0 bottom-0 border-l border-gray-800" style={{left: `${toPercent(h,0)}%`}}>
+            <span className="absolute -top-0.5 -translate-x-1/2 text-[9px] text-gray-600">{h}</span>
+          </div>
+        ))}
+        {/* Blocks */}
+        {allBlocks.map((b, i) => {
+          const s = parseTime(b.start), e = parseTime(b.end);
+          const left = toPercent(s.h, s.m), right = toPercent(e.h, e.m);
+          return (
+            <div key={i} className={`absolute top-4 bottom-1 rounded border ${BLOCK_COLORS[b.type] || BLOCK_COLORS.task} flex items-center justify-center overflow-hidden`}
+              style={{left: `${left}%`, width: `${Math.max(right-left, 1)}%`}} title={b.label}>
+              <span className="text-[9px] text-white truncate px-1">{b.label}</span>
+            </div>
+          );
+        })}
+        {/* Now indicator */}
+        {nowPercent > 0 && nowPercent < 100 && (
+          <div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 animate-pulse" style={{left: `${nowPercent}%`}}>
+            <div className="absolute -top-1 -translate-x-1/2 w-2 h-2 bg-red-500 rounded-full"/>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddTaskModal({ projects, onClose, onAdd }) {
+  const [project, setProject] = useState('');
+  const [title, setTitle] = useState('');
+  const [priority, setPriority] = useState('P2');
+  const [due, setDue] = useState('');
+  
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!project || !title) return;
+    onAdd({ project, title, priority, due: due || undefined });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-6 w-full max-w-md" onClick={e=>e.stopPropagation()}>
+        <h3 className="text-lg font-bold text-white mb-4">➕ タスク追加</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <select value={project} onChange={e=>setProject(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white" required>
+            <option value="">プロジェクト選択...</option>
+            {(projects||[]).map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+          </select>
+          <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="タスク名" className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white" required/>
+          <div className="flex gap-2">
+            {['P1','P2','P3'].map(p => (
+              <button key={p} type="button" onClick={()=>setPriority(p)}
+                className={`flex-1 py-2 rounded-lg border text-sm font-medium ${priority===p ? 'border-white text-white' : 'border-gray-600 text-gray-400'}`}>
+                <span className={`inline-block w-2 h-2 rounded-full ${PRIORITY_COLORS[p]} mr-1`}/>{p}
+              </button>
+            ))}
+          </div>
+          <input type="date" value={due} onChange={e=>setDue(e.target.value)} className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white"/>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="flex-1 py-2 bg-gray-700 rounded-lg text-gray-300">キャンセル</button>
+            <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-medium">追加</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function TaskCard({ project }) {
+  const { emoji, name, tasks } = project;
+  const undone = tasks.filter(t => !t.done);
+  const done = tasks.filter(t => t.done);
+  
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
+      <h3 className="text-base font-bold text-white mb-3">{emoji} {name} <span className="text-xs text-gray-500 font-normal ml-1">{undone.length}件</span></h3>
+      <div className="space-y-1.5">
+        {undone.map((t, i) => {
+          const isOverdue = t.due && new Date(t.due) < new Date() && !t.done;
+          const isUrgent = t.priority === 'P1' && !t.done;
+          return (
+            <div key={i} className={`flex items-start gap-2 p-1.5 rounded text-sm ${isUrgent ? 'border border-yellow-500/50 bg-yellow-900/20' : ''}`}>
+              <input type="checkbox" checked={t.done} onChange={() => project.onToggle(project.id, i)}
+                className="mt-0.5 rounded border-gray-600 bg-gray-700"/>
+              <div className="flex-1 min-w-0">
+                <span className={isOverdue ? 'text-red-400 font-semibold' : 'text-gray-200'}>{t.title}</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  {t.priority && <span className={`w-1.5 h-1.5 rounded-full ${PRIORITY_COLORS[t.priority]}`}/>}
+                  {t.due && <span className={`text-[10px] ${isOverdue ? 'text-red-400' : 'text-gray-500'}`}>{t.due}</span>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {done.slice(0, 3).map((t, i) => (
+          <div key={`d${i}`} className="flex items-start gap-2 p-1.5 opacity-60">
+            <input type="checkbox" checked readOnly className="mt-0.5 rounded border-gray-600 bg-gray-700"/>
+            <span className="text-sm line-through text-gray-500">{t.title}</span>
+          </div>
+        ))}
+        {done.length > 3 && <div className="text-[10px] text-gray-600 pl-6">+{done.length-3} 完了済み</div>}
+      </div>
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const [taskData, setTaskData] = useState(null);
+  const [scheduleBlocks, setScheduleBlocks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [tasksRes, schedRes] = await Promise.all([
+        fetch('/api/dashboard-data/tasks'),
+        fetch('/api/dashboard-data/schedule/today').catch(() => null)
+      ]);
+      const tasks = await tasksRes.json();
+      setTaskData(tasks);
+      if (schedRes && schedRes.ok) { const s = await schedRes.json(); setScheduleBlocks(s.blocks || []); }
+    } catch(e) { console.error('Dashboard fetch error:', e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchData(); const t = setInterval(fetchData, 60000); return () => clearInterval(t); }, [fetchData]);
+
+  const handleToggle = async (project, taskIndex) => {
+    await fetch('/api/dashboard-data/task/toggle', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({project, taskIndex}) });
+    fetchData();
+  };
+
+  const handleAdd = async (data) => {
+    await fetch('/api/dashboard-data/task/add', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) });
+    setShowAddModal(false);
+    fetchData();
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-400">読み込み中...</div></div>;
+
+  const projects = (taskData?.projects || []).map(p => ({...p, onToggle: handleToggle}));
+
+  return (
+    <div className="space-y-6 pb-20 md:pb-0">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-white">📊 ダッシュボード</h1>
+        <div className="flex items-center gap-4">
+          <button onClick={()=>setShowAddModal(true)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm text-white font-medium">➕ タスク</button>
+          <Clock/>
+        </div>
+      </div>
+
+      <Timeline scheduleBlocks={scheduleBlocks} meetings={taskData?.meetings}/>
+
+      <div>
+        <h2 className="text-lg font-bold text-white mb-3">📋 プロジェクトタスク</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {projects.filter(p => p.tasks.some(t => !t.done)).map(p => <TaskCard key={p.id} project={p}/>)}
+        </div>
+        {projects.filter(p => p.tasks.every(t => t.done)).length > 0 && (
+          <div className="mt-4 text-sm text-gray-500">✅ {projects.filter(p=>p.tasks.every(t=>t.done)).map(p=>`${p.emoji}${p.name}`).join(', ')} — 全完了</div>
+        )}
+      </div>
+
+      {showAddModal && <AddTaskModal projects={projects} onClose={()=>setShowAddModal(false)} onAdd={handleAdd}/>}
+    </div>
+  );
+}

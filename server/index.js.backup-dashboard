@@ -576,22 +576,6 @@ app.get('/api/token/providers', (req, res) => {
 console.log('🔑 Token管理API已加载');
 
 
-
-// === Dashboard Data Proxy to Flask (port 8090) ===
-const httpNative = require('http');
-function proxyToFlask(req, res, flaskPath) {
-  const options = { hostname: 'localhost', port: 8090, path: flaskPath, method: req.method, headers: { 'Content-Type': 'application/json' } };
-  const proxy = httpNative.request(options, (proxyRes) => { res.writeHead(proxyRes.statusCode, proxyRes.headers); proxyRes.pipe(res); });
-  proxy.on('error', (e) => { res.status(502).json({ error: 'Flask proxy error: ' + e.message }); });
-  if (req.method === 'POST') req.pipe(proxy); else proxy.end();
-}
-app.get('/api/dashboard-data/tasks', (req, res) => proxyToFlask(req, res, '/tasks.json'));
-app.post('/api/dashboard-data/task/toggle', (req, res) => proxyToFlask(req, res, '/api/task/toggle'));
-app.post('/api/dashboard-data/task/add', (req, res) => proxyToFlask(req, res, '/api/task/add'));
-app.get('/api/dashboard-data/schedule/today', (req, res) => proxyToFlask(req, res, '/api/schedule/today'));
-app.get('/api/dashboard-data/family', (req, res) => proxyToFlask(req, res, '/api/family'));
-console.log('Dashboard proxy routes loaded (Flask :8090)');
-
 // 静态文件服务 - 必须在SPA fallback之前
 app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
 

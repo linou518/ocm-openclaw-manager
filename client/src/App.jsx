@@ -14,6 +14,7 @@ import Audit from './pages/Audit';
 import CronJobs from './pages/CronJobs';
 import Optimizations from './pages/Optimizations';
 import OcmNodeManager from './pages/OcmNodeManager';
+import Family from './pages/Family';
 
 function AppContent() {
   const location = useLocation();
@@ -21,7 +22,8 @@ function AppContent() {
   const { isDark, toggleTheme } = useTheme();
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: '🏠' },
+    { path: '/', label: 'Dashboard', icon: '📊' },
+    { path: '/family', label: '家庭', icon: '👨‍👩‍👧‍👦' },
     { path: '/bot-control', label: 'Bot控制', icon: '🤖' },
     { path: '/nodes', label: '节点', icon: '🖥️' },
     { path: '/node-manager', label: '节点管理', icon: '🔧' },
@@ -205,6 +207,7 @@ function AppContent() {
               <Route path="/audit" element={<Audit />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/node-manager" element={<OcmNodeManager />} />
+              <Route path="/family" element={<Family />} />
             </Routes>
           </div>
         </main>
@@ -274,11 +277,22 @@ function AppContent() {
   );
 }
 
+function StandaloneNodeManager() {
+  return (
+    <div className="min-h-screen bg-gray-900 text-white p-6">
+      <OcmNodeManager />
+    </div>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
-        <AppContent />
+        <Routes>
+          <Route path="/embed/node-manager" element={<StandaloneNodeManager />} />
+          <Route path="*" element={<AppContent />} />
+        </Routes>
       </BrowserRouter>
     </ThemeProvider>
   );

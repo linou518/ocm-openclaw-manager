@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Linou Dashboard</title>
+<style>
+  :root {
+    --bg: #f5f5f7; --card: #ffffff; --border: #e5e5ea; --sidebar: #fafafa;
+    --text: #1d1d1f; --muted: #86868b; --accent: #5856d6;
+    --red: #ff3b30; --yellow: #ff9500; --green: #34c759; --blue: #007aff;
+    --sidebar-w: 220px;
+    --urgent-bg: #fff8e1; --urgent-border: #ffe082;
+  }
+  
+  .theme-blue { --bg: #f0f8ff; --card: #ffffff; --sidebar: #e6f3ff; }
+  .theme-green { --bg: #f0fff0; --card: #ffffff; --sidebar: #e6ffe6; }
+  .theme-pink { --bg: #fff5f5; --card: #ffffff; --sidebar: #ffe6f0; }
+  .theme-purple { --bg: #faf5ff; --card: #ffffff; --sidebar: #f3e8ff; }
+  
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; background:var(--bg); color:var(--text); height:100vh; overflow:hidden; display:flex; transition: all 0.3s ease; }
+
+  .sidebar { width:var(--sidebar-w); background:var(--sidebar); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; height:100vh; overflow-y:auto; position:relative; }
+  .sidebar-header { padding:16px; border-bottom:1px solid var(--border); }
+  .sidebar-header h1 { font-size:18px; font-weight:700; }
+  .sidebar-header .sub { font-size:12px; color:var(--muted); margin-top:4px; }
+  .nav-section { padding:8px 0; }
+  .nav-label { font-size:11px; text-transform:uppercase; color:var(--muted); padding:0 16px; margin-bottom:4px; letter-spacing:0.5px; }
+  .nav-item { padding:8px 16px; cursor:pointer; display:flex; align-items:center; gap:8px; font-size:14px; transition:background 0.15s; border-left:3px solid transparent; }
+  .nav-item:hover { background:rgba(88,86,214,0.06); }
+  .nav-item.active { background:rgba(88,86,214,0.1); border-left-color:var(--accent); color:var(--accent); }
+  .nav-item .emoji { font-size:16px; }
+  .nav-item .count { margin-left:auto; font-size:12px; background:var(--border); padding:2px 6px; border-radius:99px; color:var(--muted); }
+  .nav-item .count.urgent { background:var(--red); color:white; }
+  
+  .sidebar-bottom { position:absolute; bottom:0; left:0; right:0; border-top:1px solid var(--border); background:var(--sidebar); }
+  .sidebar-clock { padding:16px; text-align:center; position:relative; border-bottom:1px solid var(--border); }
+  .sidebar-clock .time { font-size:24px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .sidebar-clock .date { font-size:11px; color:var(--muted); margin-top:4px; }
+  .theme-switcher { position:absolute; top:8px; right:8px; width:18px; height:18px; border-radius:50%; background:var(--accent); cursor:pointer; opacity:0.7; transition:opacity 0.2s; }
+  .theme-switcher:hover { opacity:1; }
+  
+  .mini-calendar { padding:12px; background:var(--card); border-radius:8px 8px 0 0; }
+  .mini-calendar .cal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .mini-calendar .cal-month { font-size:12px; font-weight:600; }
+  .mini-calendar .cal-nav { cursor:pointer; font-size:14px; color:var(--muted); }
+  .mini-calendar .cal-nav:hover { color:var(--accent); }
+  .mini-calendar .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+  .mini-calendar .cal-day { font-size:10px; text-align:center; padding:4px 2px; border-radius:3px; cursor:pointer; }
+  .mini-calendar .cal-day:hover { background:var(--border); }
+  .mini-calendar .cal-day.today { background:var(--accent); color:white; font-weight:600; }
+  .mini-calendar .cal-day.other-month { color:var(--muted); opacity:0.5; }
+  .mini-calendar .cal-weekdays { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; margin-bottom:4px; }
+  .mini-calendar .cal-weekday { font-size:9px; text-align:center; color:var(--muted); padding:2px; }
+
+  .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  
+  .timeline-container { padding:12px 20px; border-bottom:1px solid var(--border); background:var(--card); overflow-x:auto; }
+  .timeline-header { font-size:12px; font-weight:600; color:var(--muted); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+  .timeline-header .now-indicator { width:8px; height:8px; border-radius:50%; background:var(--red); animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .timeline { position:relative; height:52px; min-width:100%; border-radius:8px; background:var(--bg); border:1px solid var(--border); }
+  .tl-hour-mark { font-size:10px; color:var(--muted); position:absolute; top:1px; transform:translateX(-50%); }
+  .tl-blocks { position:absolute; top:16px; left:0; right:0; bottom:2px; }
+  .tl-block { position:absolute; top:0; bottom:0; border-radius:4px; padding:1px 4px; overflow:hidden; cursor:default; display:flex; align-items:center; font-size:11px; font-weight:500; white-space:nowrap; transition:opacity 0.15s; border:1px solid transparent; }
+  .tl-block:hover { opacity:0.85; }
+  .tl-block.meeting { background:#e8def8; color:#4a148c; border-color:#d1c4e9; }
+  .tl-block.task { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
+  .tl-block.fixed { background:#f3f4f6; color:#6b7280; border-color:#e5e7eb; }
+  .tl-block.break { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+  .tl-block.past { opacity:0.45; }
+  .tl-now { position:absolute; top:14px; bottom:0; width:2px; background:var(--red); z-index:10; }
+  .tl-now::after { content:""; position:absolute; top:-3px; left:-3px; width:8px; height:8px; border-radius:50%; background:var(--red); }
+  .tl-legend { display:flex; gap:15px; margin-top:6px; font-size:11px; color:var(--muted); }
+  .tl-legend-item { display:flex; align-items:center; gap:4px; }
+  .tl-legend-dot { width:8px; height:8px; border-radius:2px; }
+
+  .dashboard-content { flex:1; overflow:hidden; }
+  .dashboard-left { padding:16px; overflow-y:auto; height:100%; }
+  
+  .task-columns { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .column { }
+  .col-header { font-size:14px; font-weight:600; text-transform:uppercase; color:var(--muted); margin-bottom:14px; letter-spacing:0.5px; }
+  
+  .project-group { margin-bottom:20px; }
+  .project-group-header { font-size:15px; font-weight:600; padding:8px 0; margin-bottom:10px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); }
+  .project-group-header .pcount { font-size:12px; color:var(--muted); margin-left:auto; }
+  
+  .task { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:10px; transition:all 0.15s; }
+  .task:hover { border-color:var(--accent); transform:translateY(-1px); box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+  .task.urgent-bg { background:var(--urgent-bg); border-color:var(--urgent-border); }
+  .task.done-today { opacity:0.6; }
+  .task-row { display:flex; align-items:flex-start; gap:10px; }
+  .task-chk { width:18px; height:18px; border-radius:3px; border:2px solid var(--border); cursor:pointer; flex-shrink:0; margin-top:2px; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+  .task-chk:hover { border-color:var(--accent); }
+  .task-chk.checked { background:var(--green); border-color:var(--green); }
+  .task-chk.checked::after { content:"✓"; color:white; font-size:11px; font-weight:700; }
+  .task-content { flex:1; }
+  .task .title { font-size:14px; line-height:1.4; }
+  .task .title.done { text-decoration:line-through; color:var(--muted); }
+  .task .meta { font-size:12px; color:var(--muted); margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; }
+  .task .meta .overdue { color:var(--red); font-weight:600; }
+  .task .meta .soon { color:var(--yellow); }
+  .priority-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; }
+  .priority-dot.P1 { background:var(--red); }
+  .priority-dot.P2 { background:var(--yellow); }
+  .priority-dot.P3 { background:var(--blue); }
+  
+  .add-task-btn { background:var(--card); border:1px dashed var(--border); border-radius:8px; padding:12px; text-align:center; cursor:pointer; color:var(--muted); font-size:13px; margin-top:10px; transition:all 0.15s; }
+  .add-task-btn:hover { border-color:var(--accent); color:var(--accent); }
+  
+  .family-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .family-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .family-card h3 { font-size:14px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .upcoming-item { display:flex; align-items:center; gap:10px; padding:10px; border-radius:8px; margin-bottom:6px; background:var(--bg); transition:all 0.15s; }
+  .upcoming-item:hover { transform:translateX(4px); }
+  .upcoming-item .ui-emoji { font-size:24px; }
+  .upcoming-item .ui-info { flex:1; }
+  .upcoming-item .ui-name { font-size:13px; font-weight:600; }
+  .upcoming-item .ui-date { font-size:11px; color:var(--muted); }
+  .upcoming-item .ui-days { font-size:12px; font-weight:700; padding:4px 10px; border-radius:99px; white-space:nowrap; }
+  .ui-days.imminent { background:#fee2e2; color:#dc2626; }
+  .ui-days.soon { background:#fef3c7; color:#d97706; }
+  .ui-days.later { background:#dbeafe; color:#2563eb; }
+  .ui-days.today { background:#dcfce7; color:#16a34a; animation:pulse 1.5s infinite; }
+  .member-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .member-card { text-align:center; padding:12px 8px; background:var(--bg); border-radius:10px; }
+  .member-card .mc-emoji { font-size:32px; }
+  .member-card .mc-name { font-size:12px; font-weight:600; margin-top:4px; }
+  .member-card .mc-date { font-size:10px; color:var(--muted); }
+  
+  #nodesView { height: calc(100vh - 160px); }
+  
+  .view { display:none; }
+  .view.active { display:block; }
+  
+  @media (max-width:1200px) {
+    .task-columns { grid-template-columns:repeat(2,1fr); }
+    .family-grid { grid-template-columns:1fr; }
+  }
+  @media (max-width:900px) {
+    .sidebar { width:60px; }
+    .sidebar-header h1, .sidebar-header .sub, .nav-label, .nav-item span:not(.emoji), .nav-item .count { display:none; }
+    .nav-item { justify-content:center; padding:10px; }
+    .sidebar-clock .date { display:none; }
+    .sidebar-clock .time { font-size:16px; }
+    .mini-calendar { display:none; }
+    .task-columns { grid-template-columns:1fr; }
+  }
+
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center;
+  z-index: 1000; backdrop-filter: blur(4px);
+}
+.modal-content {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  width: 90%; max-width: 450px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  animation: modalSlideIn 0.2s ease-out;
+}
+@keyframes modalSlideIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.modal-close { background: none; border: none; font-size: 24px; color: var(--muted); cursor: pointer; padding: 0; width: 30px; height: 30px; border-radius: 50%; transition: all 0.15s; }
+.modal-close:hover { background: var(--border); color: var(--text); }
+.modal-body { padding: 20px 24px 24px; }
+.form-group { margin-bottom: 18px; }
+.form-group label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.form-group input, .form-group select { width: 100%; padding: 10px 12px; font-size: 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); transition: border-color 0.15s; box-sizing: border-box; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88, 86, 214, 0.1); }
+.form-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+.btn-cancel, .btn-primary { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+.btn-cancel { background: var(--border); color: var(--muted); }
+.btn-cancel:hover { background: var(--muted); color: var(--bg); }
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: #4f46e5; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(88, 86, 214, 0.3); }
+.btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* === Node Manager === */
+.nm-toolbar { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+.nm-toolbar .btn-sm { padding:8px 16px; border:none; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+.nm-toolbar .btn-add { background:var(--accent); color:white; }
+.nm-toolbar .btn-add:hover { background:#4f46e5; }
+.nm-toolbar .btn-refresh { background:var(--border); color:var(--text); }
+.nm-toolbar .btn-refresh:hover { background:var(--muted); color:white; }
+
+.nm-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+.nm-stat { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:14px 16px; text-align:center; }
+.nm-stat .nm-stat-val { font-size:24px; font-weight:700; }
+.nm-stat .nm-stat-label { font-size:12px; color:var(--muted); margin-top:2px; }
+
+.nm-node { background:var(--card); border:1px solid var(--border); border-radius:8px; margin-bottom:10px; transition:all 0.15s; }
+.nm-node:hover { border-color:var(--accent); box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+.nm-node-header { padding:14px 16px; cursor:pointer; display:flex; align-items:center; gap:12px; }
+.nm-status-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.nm-status-dot.active { background:var(--green); }
+.nm-status-dot.inactive, .nm-status-dot.error { background:var(--red); }
+.nm-status-dot.unknown { background:var(--yellow); }
+.nm-node-name { font-size:15px; font-weight:600; flex:1; }
+.nm-node-host { font-size:12px; color:var(--muted); }
+.nm-node-bots { font-size:12px; color:var(--muted); margin-left:auto; }
+.nm-node-arrow { color:var(--muted); transition:transform 0.2s; font-size:12px; }
+.nm-node.expanded .nm-node-arrow { transform:rotate(90deg); }
+
+.nm-node-detail { display:none; padding:0 16px 16px; border-top:1px solid var(--border); }
+.nm-node.expanded .nm-node-detail { display:block; }
+
+.nm-actions { display:flex; flex-wrap:wrap; gap:6px; margin:12px 0; }
+.nm-action-btn { padding:5px 12px; border:none; border-radius:99px; font-size:12px; cursor:pointer; transition:all 0.15s; font-weight:500; }
+.nm-action-btn:hover { transform:translateY(-1px); filter:brightness(0.95); }
+.nm-action-btn.blue { background:#dbeafe; color:#1e40af; }
+.nm-action-btn.green { background:#dcfce7; color:#166534; }
+.nm-action-btn.yellow { background:#fef3c7; color:#92400e; }
+.nm-action-btn.red { background:#fee2e2; color:#991b1b; }
+.nm-action-btn.purple { background:#f3e8ff; color:#6b21a8; }
+.nm-action-btn.gray { background:#f3f4f6; color:#374151; }
+
+.nm-info { font-size:12px; color:var(--muted); margin:8px 0; display:flex; gap:16px; flex-wrap:wrap; }
+
+.nm-bot-list { margin-top:12px; }
+.nm-bot { display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg); border-radius:6px; margin-bottom:6px; font-size:13px; }
+.nm-bot-name { font-weight:600; min-width:100px; }
+.nm-bot-meta { color:var(--muted); flex:1; }
+.nm-bot-actions { display:flex; gap:4px; }
+.nm-bot-actions button { background:none; border:none; cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px; transition:background 0.15s; }
+.nm-bot-actions button:hover { background:var(--border); }
+
+/* Operation Log */
+.nm-oplog-overlay { position:fixed; bottom:20px; right:20px; width:500px; max-height:400px; z-index:900; display:none; }
+.nm-oplog { background:#1e1e2e; border-radius:8px; box-shadow:0 8px 32px rgba(0,0,0,0.3); overflow:hidden; display:flex; flex-direction:column; max-height:400px; }
+.nm-oplog-header { padding:10px 14px; background:#2a2a3e; display:flex; align-items:center; justify-content:space-between; color:#cdd6f4; font-size:13px; font-weight:600; }
+.nm-oplog-header button { background:none; border:none; color:#6c7086; cursor:pointer; font-size:16px; }
+.nm-oplog-header button:hover { color:#cdd6f4; }
+.nm-oplog-body { padding:10px 14px; overflow-y:auto; flex:1; font-family:'Fira Code',monospace; font-size:12px; line-height:1.8; color:#cdd6f4; min-height:100px; max-height:340px; }
+.nm-oplog-step { white-space:pre-wrap; }
+.nm-oplog-step.done { color:#a6e3a1; }
+.nm-oplog-step.running { color:#f9e2af; }
+.nm-oplog-step.error { color:#f38ba8; }
+.nm-oplog-step.skipped { color:#6c7086; }
+
+/* Logs modal */
+.nm-logs-container { background:#1e1e2e; border-radius:8px; padding:12px; font-family:monospace; font-size:12px; color:#cdd6f4; max-height:60vh; overflow-y:auto; white-space:pre-wrap; line-height:1.6; }
+.nm-logs-toolbar { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+.nm-logs-toolbar select, .nm-logs-toolbar button { padding:6px 12px; border-radius:6px; border:1px solid var(--border); font-size:12px; background:var(--bg); cursor:pointer; }
+.nm-live-dot { width:8px; height:8px; border-radius:50%; background:var(--green); display:inline-block; animation:pulse 2s infinite; }
+
+/* Backup list */
+.nm-backup-item { display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--bg); border-radius:6px; margin-bottom:6px; font-size:13px; cursor:pointer; transition:all 0.15s; }
+.nm-backup-item:hover { background:var(--border); }
+.nm-backup-badge { padding:2px 8px; border-radius:99px; font-size:11px; font-weight:600; }
+.nm-backup-badge.node { background:#dbeafe; color:#1e40af; }
+.nm-backup-badge.bot { background:#f3e8ff; color:#6b21a8; }
+.nm-backup-info { flex:1; }
+.nm-backup-size { color:var(--muted); font-size:12px; }
+
+.form-group textarea { width:100%; padding:10px 12px; font-size:14px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-family:inherit; resize:vertical; min-height:80px; box-sizing:border-box; }
+.form-group textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(88,86,214,0.1); }
+
+@media (max-width:900px) { .nm-summary { grid-template-columns:repeat(2,1fr); } .nm-oplog-overlay { width:calc(100vw - 40px); left:20px; } }
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>📋 Dashboard</h1>
+    <div class="sub">Linou Control Center</div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">概览</div>
+    <div class="nav-item active" data-view="overview">
+      <span class="emoji">🏠</span><span>今日総覧</span>
+    </div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">家庭</div>
+    <div class="nav-item" data-view="family">
+      <span class="emoji">🎂</span><span>家庭纪念日</span>
+      <span class="count" id="familyCount">0</span>
+    </div>
+  </div>
+  <div class="nav-section">
+    <div class="nav-label">系统</div>
+    <div class="nav-item" data-view="nodes">
+      <span class="emoji">🔧</span><span>节点管理</span>
+    </div>
+  </div>
+  
+  <div class="sidebar-bottom">
+    <div class="sidebar-clock">
+      <div class="time" id="clock"></div>
+      <div class="date" id="dateStr"></div>
+      <div class="theme-switcher" onclick="switchTheme()" title="切换主题"></div>
+    </div>
+    <div class="mini-calendar" id="miniCalendar">
+      <div class="cal-header">
+        <div class="cal-nav" onclick="prevMonth()">‹</div>
+        <div class="cal-month" id="calMonth"></div>
+        <div class="cal-nav" onclick="nextMonth()">›</div>
+      </div>
+      <div class="cal-weekdays">
+        <div class="cal-weekday">日</div><div class="cal-weekday">一</div><div class="cal-weekday">二</div><div class="cal-weekday">三</div><div class="cal-weekday">四</div><div class="cal-weekday">五</div><div class="cal-weekday">六</div>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Timeline -->
+  <div class="timeline-container">
+    <div class="timeline-header">
+      <span class="now-indicator"></span>
+      <span>今日时间线</span>
+      <span id="tlSummary" style="margin-left:auto"></span>
+    </div>
+    <div class="timeline" id="timeline"></div>
+    <div class="tl-legend">
+      <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#e8def8"></div>会议</div>
+      <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#dbeafe"></div>任务</div>
+      <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#f3f4f6"></div>固定</div>
+      <div class="tl-legend-item"><div class="tl-legend-dot" style="background:#dcfce7"></div>休息</div>
+    </div>
+  </div>
+
+  <!-- Dashboard Content -->
+  <div class="dashboard-content">
+    <div class="dashboard-left">
+      <!-- Overview View -->
+      <div class="view active" id="overviewView">
+        <div class="task-columns" id="taskColumns"></div>
+      </div>
+      
+      <!-- Family View -->
+      <div class="view" id="familyView">
+        <div class="family-grid">
+          <div class="family-card" style="grid-column:span 2">
+            <h3>📅 即将到来</h3>
+            <div id="upcomingList"></div>
+          </div>
+          <div class="family-card">
+            <h3>👨‍👩‍👧‍👦 家庭成员</h3>
+            <div class="member-grid" id="memberGrid"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Nodes View -->
+      <div class="view" id="nodesView">
+        <div class="nm-toolbar">
+          <button class="btn-sm btn-add" onclick="nmOpenAddNode()">＋ 添加节点</button>
+          <button class="btn-sm btn-refresh" onclick="nmRefresh()">🔄 刷新</button>
+        </div>
+        <div class="nm-summary" id="nmSummary"></div>
+        <div id="nmNodeList"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DATA_URL = "tasks.json";
+let appData = null;
+let familyData = null;
+const today = new Date().toISOString().slice(0,10);
+const threeDaysLater = new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+
+const TL_START = 5, TL_END = 18, TL_HOURS = TL_END - TL_START;
+
+function getFixedBlocks() {
+  const now = new Date();
+  if (now.getDay() === 0 || now.getDay() === 6) return [];
+  return [
+    { start: "07:00", end: "08:30", label: "🚸 送孩子上学", type: "fixed" },
+    { start: "12:00", end: "13:00", label: "🍱 午休", type: "break" },
+  ];
+}
+
+function timeToMin(t) { const [h,m] = t.split(":").map(Number); return h*60+m; }
+function tlPercent(t) { const m = timeToMin(t); return ((m - TL_START*60) / (TL_HOURS*60)) * 100; }
+
+// Navigation
+function showView(viewName) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  document.getElementById(viewName + "View").classList.add("active");
+  document.querySelector(`[data-view="${viewName}"]`).classList.add("active");
+  if (viewName === "family") loadFamily();
+  if (viewName === "nodes") { /* iframe loads automatically */ }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+  document.querySelectorAll(".nav-item").forEach(item => {
+    item.addEventListener("click", function() {
+      const view = this.getAttribute("data-view");
+      if (view) showView(view);
+    });
+  });
+});
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  document.getElementById("clock").textContent = now.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  document.getElementById("dateStr").textContent = now.toLocaleDateString("zh-CN",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+}
+updateClock(); setInterval(updateClock, 1000);
+
+// Mini Calendar
+let currentCalDate = new Date();
+function renderMiniCalendar() {
+  const year = currentCalDate.getFullYear(), month = currentCalDate.getMonth(), today = new Date();
+  document.getElementById("calMonth").textContent = `${year}年${month + 1}月`;
+  const firstDay = new Date(year, month, 1), startDate = new Date(firstDay);
+  startDate.setDate(startDate.getDate() - firstDay.getDay());
+  const grid = document.getElementById("calGrid"); grid.innerHTML = "";
+  for (let i = 0; i < 42; i++) {
+    const date = new Date(startDate); date.setDate(startDate.getDate() + i);
+    const dayEl = document.createElement("div"); dayEl.className = "cal-day"; dayEl.textContent = date.getDate();
+    if (date.getMonth() !== month) dayEl.classList.add("other-month");
+    if (date.toDateString() === today.toDateString()) dayEl.classList.add("today");
+    grid.appendChild(dayEl);
+  }
+}
+function prevMonth() { currentCalDate.setMonth(currentCalDate.getMonth() - 1); renderMiniCalendar(); }
+function nextMonth() { currentCalDate.setMonth(currentCalDate.getMonth() + 1); renderMiniCalendar(); }
+renderMiniCalendar();
+
+// Theme
+const themes = ["", "theme-blue", "theme-green", "theme-pink", "theme-purple"];
+let currentTheme = 0;
+function switchTheme() { document.body.className = ""; currentTheme = (currentTheme + 1) % themes.length; if (themes[currentTheme]) document.body.classList.add(themes[currentTheme]); localStorage.setItem("dashboardTheme", currentTheme); }
+function loadTheme() { const saved = localStorage.getItem("dashboardTheme"); currentTheme = saved !== null ? parseInt(saved) : new Date().getDate() % themes.length; if (themes[currentTheme]) document.body.classList.add(themes[currentTheme]); }
+loadTheme();
+
+// Timeline
+function buildTimeline() {
+  const blocks = [...getFixedBlocks()];
+  if (appData && appData.meetings) appData.meetings.forEach(m => blocks.push({ start: m.time, end: m.endTime, label: "📅 " + m.title, type: "meeting" }));
+  return blocks;
+}
+function renderTimeline() {
+  const tl = document.getElementById("timeline"), blocks = buildTimeline(), now = new Date(), nowMin = now.getHours()*60+now.getMinutes();
+  let html = "";
+  for (let h = TL_START; h <= TL_END; h++) { const pct = ((h-TL_START)/TL_HOURS)*100; html += `<div class="tl-hour-mark" style="left:${pct}%">${h}:00</div>`; }
+  html += "<div class=\"tl-blocks\">";
+  blocks.forEach(b => { const left = Math.max(0,tlPercent(b.start)), right = Math.min(100,tlPercent(b.end)), width = right-left; if(width<=0)return; const isPast=timeToMin(b.end)<nowMin; html += `<div class="tl-block ${b.type}${isPast?" past":""}" style="left:${left}%;width:${width}%" title="${b.start}-${b.end} ${b.label}">${width>3?b.label:""}</div>`; });
+  html += "</div>";
+  if (nowMin >= TL_START*60 && nowMin <= TL_END*60) { const nowPct=((nowMin-TL_START*60)/(TL_HOURS*60))*100; html += `<div class="tl-now" style="left:${nowPct}%"></div>`; }
+  tl.innerHTML = html;
+}
+
+// Tasks
+async function loadData() {
+  try { const res = await fetch(DATA_URL+"?t="+Date.now()); appData = await res.json(); renderOverview(); renderTimeline(); }
+  catch(e) { console.error("Task data load failed:", e); document.getElementById("taskColumns").innerHTML = `<div class="column"><div class="col-header">📋 任务概览</div><div style="padding:20px;text-align:center;color:var(--muted);">📂 暂无任务数据</div></div>`; }
+}
+function isUrgent(t) { return !t.done && t.due && t.due <= threeDaysLater; }
+function isDoneToday(t) { return t.done && t.doneDate === today; }
+function taskHtml(task, projectId, taskIndex) {
+  const urgentClass = isUrgent(task)?" urgent-bg":"", doneTodayClass = isDoneToday(task)?" done-today":"", checkedClass = task.done?" checked":"", titleClass = task.done?" done":"";
+  let dueMeta = "";
+  if (task.due) { const dueDate=new Date(task.due),now=new Date(),diffDays=Math.ceil((dueDate-now)/(1000*60*60*24)); if(diffDays<0)dueMeta=`<span class="overdue">已过期 ${Math.abs(diffDays)} 天</span>`; else if(diffDays===0)dueMeta=`<span class="soon">今天截止</span>`; else if(diffDays<=3)dueMeta=`<span class="soon">${diffDays} 天后截止</span>`; else dueMeta=`截止: ${task.due}`; }
+  let priorityDot = task.priority ? `<span class="priority-dot ${task.priority}"></span>` : "";
+  return `<div class="task${urgentClass}${doneTodayClass}"><div class="task-row"><div class="task-chk${checkedClass}" onclick="toggleTask(${projectId}, ${taskIndex})"></div><div class="task-content"><div class="title${titleClass}">${priorityDot}${task.title}</div>${(dueMeta||task.note)?`<div class="meta">${dueMeta}${task.note?` · ${task.note}`:""}</div>`:""}</div></div></div>`;
+}
+function renderOverview() {
+  if (!appData||!appData.projects) return;
+  const projectsWithTasks = appData.projects.filter(p => p.tasks && p.tasks.some(t => !t.done || isDoneToday(t)));
+  if (!projectsWithTasks.length) { document.getElementById("taskColumns").innerHTML = `<div class="column"><div class="col-header">📋 任务概览</div><div style="padding:20px;text-align:center;color:var(--muted);">🎉 暂无待办任务</div></div>`; return; }
+  const projectHtmls = projectsWithTasks.map(p => { const vt=p.tasks.filter(t=>!t.done||isDoneToday(t)); if(!vt.length)return""; let h=`<div class="project-group"><div class="project-group-header">${p.emoji} ${p.name}<span class="pcount">${vt.filter(t=>!t.done).length} 项</span></div>`; vt.sort((a,b)=>{if(a.done!==b.done)return a.done?1:-1;return(a.due||"9999").localeCompare(b.due||"9999");}); vt.forEach((t,i)=>{h+=taskHtml(t,p.id,i);}); return h+"</div>"; }).filter(Boolean);
+  const cols=["","",""]; projectHtmls.forEach((h,i)=>{cols[i%3]+=h;});
+  document.getElementById("taskColumns").innerHTML = cols.map((c,i)=>`<div class="column">${i===0?'<div class="col-header">📋 任务（按项目分组）</div>':'<div class="col-header">&nbsp;</div>'}${c}${i===2?'<div class="add-task-btn" onclick="openAddTask()">＋ 添加任务</div>':""}</div>`).join("");
+}
+
+function openAddTask() { document.getElementById("addTaskModal").style.display="flex"; loadProjects(); }
+function closeAddTask() { document.getElementById("addTaskModal").style.display="none"; document.getElementById("addTaskForm").reset(); }
+async function loadProjects() { const s=document.getElementById("taskProject"); s.innerHTML='<option value="">选择项目...</option>'; ["docomo","flect","laboro","mcd-3","nobdata","personal","royal","techsfree","videos"].forEach(p=>{const o=document.createElement("option");o.value=p;o.textContent=p.charAt(0).toUpperCase()+p.slice(1);s.appendChild(o);}); }
+async function submitTask(event) {
+  event.preventDefault(); const form=document.getElementById("addTaskForm"),btn=form.querySelector('button[type="submit"]');
+  const project=document.getElementById("taskProject").value,title=document.getElementById("taskTitle").value.trim(),priority=document.getElementById("taskPriority").value,due=document.getElementById("taskDue").value;
+  if(!project||!title){alert("请填写项目和任务标题");return;} btn.disabled=true;btn.textContent="添加中...";
+  try{const r=await fetch("/api/task/add",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({project,title,priority,due})}); if(r.ok){closeAddTask();loadData();alert("任务添加成功！");}else{const e=await r.json();alert("添加失败: "+(e.error||"未知错误"));}} catch(e){alert("添加失败，请重试");} finally{btn.disabled=false;btn.textContent="添加任务";}
+}
+async function toggleTask(projectId, taskIndex) { try{const r=await fetch("/api/task/toggle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({project:projectId,taskIndex})});if(r.ok)loadData();}catch(e){} }
+
+// Family
+async function loadFamily() {
+  try { const res=await fetch("/api/family?t="+Date.now()); familyData=await res.json(); const soon=(familyData.upcoming||[]).filter(u=>u.days<=30).length; const ce=document.getElementById("familyCount"); if(ce){ce.textContent=soon;ce.className="count"+(soon>0?" urgent":"");} renderFamily(); } catch(e){}
+}
+function renderFamily() {
+  if(!familyData)return;
+  let html=""; (familyData.upcoming||[]).forEach(u=>{const dCls=u.days===0?"today":u.days<=7?"imminent":u.days<=30?"soon":"later";const dText=u.days===0?"🎉 今天！":u.days+"天后";const ti=u.type==="birthday"?"🎂":"💝";html+=`<div class="upcoming-item"><span class="ui-emoji">${u.emoji}</span><div class="ui-info"><div class="ui-name">${u.name} ${ti}</div><div class="ui-date">${u.date} · ${u.info}</div></div><span class="ui-days ${dCls}">${dText}</span></div>`;}); document.getElementById("upcomingList").innerHTML=html;
+  html=""; (familyData.members||[]).forEach(m=>{html+=`<div class="member-card"><div class="mc-emoji">${m.emoji}</div><div class="mc-name">${m.name}</div><div class="mc-date">${m.birthday}</div></div>`;}); document.getElementById("memberGrid").innerHTML=html;
+}
+
+// Init
+loadData(); renderTimeline(); loadFamily();
+setInterval(loadData, 60000); setInterval(renderTimeline, 60000); setInterval(loadFamily, 300000);
+</script>
+
+<!-- 任务添加弹窗 -->
+<div id="addTaskModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header"><h3>📋 添加新任务</h3><button class="modal-close" onclick="closeAddTask()">×</button></div>
+    <div class="modal-body">
+      <form id="addTaskForm" onsubmit="submitTask(event)">
+        <div class="form-group"><label for="taskProject">项目</label><select id="taskProject" required><option value="">选择项目...</option></select></div>
+        <div class="form-group"><label for="taskTitle">任务标题</label><input type="text" id="taskTitle" placeholder="输入任务内容..." required></div>
+        <div class="form-group"><label for="taskPriority">优先级</label><select id="taskPriority"><option value="">无</option><option value="P1">🔴 高优先级</option><option value="P2">🟡 中优先级</option><option value="P3">🔵 低优先级</option></select></div>
+        <div class="form-group"><label for="taskDue">截止日期</label><input type="date" id="taskDue"></div>
+        <div class="form-actions"><button type="button" class="btn-cancel" onclick="closeAddTask()">取消</button><button type="submit" class="btn-primary">添加任务</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Node Manager Operation Log -->
+<div class="nm-oplog-overlay" id="nmOplogOverlay">
+  <div class="nm-oplog">
+    <div class="nm-oplog-header"><span id="nmOplogTitle">操作日志</span><button onclick="nmCloseOpLog()">✕</button></div>
+    <div class="nm-oplog-body" id="nmOplogBody"></div>
+  </div>
+</div>
+
+<!-- Node Manager Confirm Modal -->
+<div id="nmConfirmModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header"><h3 id="nmConfirmTitle">确认</h3><button class="modal-close" onclick="nmCloseConfirm()">×</button></div>
+    <div class="modal-body">
+      <p id="nmConfirmMsg" style="margin-bottom:16px;"></p>
+      <div id="nmConfirmInputWrap" style="display:none;" class="form-group">
+        <label id="nmConfirmInputLabel">请输入确认文字</label>
+        <input type="text" id="nmConfirmInput" autocomplete="off">
+      </div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="nmCloseConfirm()">取消</button>
+        <button class="btn-primary" id="nmConfirmBtn" onclick="nmDoConfirm()">确认</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Node Modal -->
+<div id="nmAddNodeModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width:500px;">
+    <div class="modal-header"><h3>🔧 添加节点</h3><button class="modal-close" onclick="nmCloseModal('nmAddNodeModal')">×</button></div>
+    <div class="modal-body">
+      <form id="nmAddNodeForm" onsubmit="nmSubmitAddNode(event)">
+        <div class="form-group"><label>节点ID *</label><input type="text" id="nmNodeId" required placeholder="e.g. my-server"></div>
+        <div class="form-group"><label>名称 *</label><input type="text" id="nmNodeName" required placeholder="e.g. My Server"></div>
+        <div class="form-group"><label>主机地址 *</label><input type="text" id="nmNodeHost" required placeholder="e.g. 192.168.1.100"></div>
+        <div class="form-group"><label>SSH 用户 *</label><input type="text" id="nmNodeSshUser" required placeholder="e.g. openclaw"></div>
+        <div class="form-group"><label>SSH 端口</label><input type="number" id="nmNodeSshPort" value="22"></div>
+        <div class="form-group"><label>OC 路径</label><input type="text" id="nmNodeOcPath" placeholder="/home/user/.openclaw"></div>
+        <div class="form-group"><label>Gateway 端口</label><input type="number" id="nmNodeGwPort" value="18789"></div>
+        <div class="form-group"><label>Auth Token</label><input type="text" id="nmNodeAuthToken" placeholder="可选"></div>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" onclick="nmCloseModal('nmAddNodeModal')">取消</button>
+          <button type="submit" class="btn-primary">添加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Bot Modal -->
+<div id="nmAddBotModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width:500px;">
+    <div class="modal-header"><h3>🤖 添加Bot</h3><button class="modal-close" onclick="nmCloseModal('nmAddBotModal')">×</button></div>
+    <div class="modal-body">
+      <form id="nmAddBotForm" onsubmit="nmSubmitAddBot(event)">
+        <input type="hidden" id="nmAddBotNodeId">
+        <div class="form-group"><label>Bot ID *</label><input type="text" id="nmBotId" required placeholder="e.g. my-bot"></div>
+        <div class="form-group"><label>显示名称</label><input type="text" id="nmBotName" placeholder="可选"></div>
+        <div class="form-group"><label>Telegram Token</label><input type="text" id="nmBotToken" placeholder="可选"></div>
+        <div class="form-group"><label>Model</label><input type="text" id="nmBotModel" placeholder="e.g. claude-sonnet-4-20250514" value="claude-sonnet-4-20250514"></div>
+        <div class="form-group"><label>Channel</label><input type="text" id="nmBotChannel" placeholder="e.g. telegram" value="telegram"></div>
+        <div class="form-group"><label>Auth Token</label><input type="text" id="nmBotAuthToken" placeholder="可选"></div>
+        <div class="form-group"><label>Soul</label><textarea id="nmBotSoul" placeholder="Bot的灵魂描述..."></textarea></div>
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" onclick="nmCloseModal('nmAddBotModal')">取消</button>
+          <button type="submit" class="btn-primary">添加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Subscription Modal -->
+<div id="nmSubModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content">
+    <div class="modal-header"><h3>🔑 设置订阅</h3><button class="modal-close" onclick="nmCloseModal('nmSubModal')">×</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="nmSubNodeId">
+      <div class="form-group"><label>Anthropic API Token</label><input type="text" id="nmSubToken" placeholder="sk-ant-..."></div>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="nmCloseModal('nmSubModal')">取消</button>
+        <button class="btn-primary" onclick="nmSubmitSub()">设置</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Backup List Modal -->
+<div id="nmBackupListModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width:600px;">
+    <div class="modal-header"><h3>📂 备份列表</h3><button class="modal-close" onclick="nmCloseModal('nmBackupListModal')">×</button></div>
+    <div class="modal-body"><div id="nmBackupListBody" style="max-height:50vh;overflow-y:auto;"></div></div>
+  </div>
+</div>
+
+<!-- Restore Picker Modal -->
+<div id="nmRestoreModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width:500px;">
+    <div class="modal-header"><h3>📦 选择备份还原</h3><button class="modal-close" onclick="nmCloseModal('nmRestoreModal')">×</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="nmRestoreNodeId"><input type="hidden" id="nmRestoreBotId">
+      <div id="nmRestoreList" style="max-height:50vh;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Logs Modal -->
+<div id="nmLogsModal" class="modal-overlay" style="display:none;">
+  <div class="modal-content" style="max-width:800px;">
+    <div class="modal-header"><h3>📋 Gateway 日志</h3><button class="modal-close" onclick="nmCloseLogs()">×</button></div>
+    <div class="modal-body">
+      <div class="nm-logs-toolbar">
+        <select id="nmLogsLines" onchange="nmFetchLogs()"><option value="50">50行</option><option value="100" selected>100行</option><option value="200">200行</option><option value="500">500行</option></select>
+        <button onclick="nmFetchLogs()">刷新</button>
+        <button onclick="nmStreamLogs()" id="nmStreamBtn">▶ 实时</button>
+        <span id="nmLiveIndicator" style="display:none;"><span class="nm-live-dot"></span> 实时</span>
+      </div>
+      <div class="nm-logs-container" id="nmLogsBody">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// === Node Manager ===
+const NM_API = "http://192.168.3.33:8001/api/ocm";
+let nmNodes = [];
+let nmExpandedId = null;
+let nmExpandedDetail = null;
+let nmConfirmCallback = null;
+let nmLogsReader = null;
+let nmLogsNodeId = null;
+let nmAutoRefresh = null;
+let nmDetailRefresh = null;
+
+// --- Data ---
+async function nmFetchNodes() {
+  try {
+    const r = await fetch(NM_API + "/nodes"); const d = await r.json();
+    if (d.success) { nmNodes = d.nodes; nmRenderAll(); }
+  } catch(e) { console.error("nmFetchNodes", e); }
+}
+
+async function nmFetchDetail(nodeId) {
+  try {
+    const r = await fetch(NM_API + "/nodes/" + nodeId); const d = await r.json();
+    if (d.success) { nmExpandedDetail = d.node; nmRenderDetail(nodeId); }
+  } catch(e) { console.error("nmFetchDetail", e); }
+}
+
+function nmRefresh() { nmFetchNodes(); }
+
+// --- Render ---
+function nmRenderAll() {
+  const total = nmNodes.length;
+  const online = nmNodes.filter(n => n.status === "active").length;
+  const offline = total - online;
+  const bots = nmNodes.reduce((s, n) => s + (n.botCount || 0), 0);
+  document.getElementById("nmSummary").innerHTML = [
+    { v: total, l: "节点总数", c: "var(--accent)" },
+    { v: online, l: "在线", c: "var(--green)" },
+    { v: offline, l: "离线", c: "var(--red)" },
+    { v: bots, l: "Bot总数", c: "var(--blue)" },
+  ].map(s => `<div class="nm-stat"><div class="nm-stat-val" style="color:${s.c}">${s.v}</div><div class="nm-stat-label">${s.l}</div></div>`).join("");
+
+  document.getElementById("nmNodeList").innerHTML = nmNodes.map(n => {
+    const expanded = n.id === nmExpandedId;
+    return `<div class="nm-node${expanded ? " expanded" : ""}" id="nmNode-${n.id}">
+      <div class="nm-node-header" onclick="nmToggleNode('${n.id}')">
+        <span class="nm-status-dot ${n.status || 'unknown'}"></span>
+        <span class="nm-node-name">${n.name || n.id}</span>
+        <span class="nm-node-host">${n.host}</span>
+        <span class="nm-node-bots">🤖 ${n.botCount || 0}</span>
+        <span class="nm-node-arrow">▶</span>
+      </div>
+      <div class="nm-node-detail" id="nmDetail-${n.id}">${expanded ? "加载中..." : ""}</div>
+    </div>`;
+  }).join("");
+
+  if (nmExpandedId && nmExpandedDetail) nmRenderDetail(nmExpandedId);
+}
+
+function nmRenderDetail(nodeId) {
+  const el = document.getElementById("nmDetail-" + nodeId);
+  if (!el || !nmExpandedDetail) return;
+  const n = nmExpandedDetail;
+  const bots = n.bots || [];
+  
+  el.innerHTML = `
+    <div class="nm-actions">
+      <button class="nm-action-btn blue" onclick="nmAction('${nodeId}','backup','💾 备份')">💾 备份</button>
+      <button class="nm-action-btn green" onclick="nmRestore('${nodeId}','')">📦 还原</button>
+      <button class="nm-action-btn yellow" onclick="nmAction('${nodeId}','restart','🔄 重启')">🔄 重启</button>
+      <button class="nm-action-btn purple" onclick="nmOpenAddBot('${nodeId}')">🤖 添加Bot</button>
+      <button class="nm-action-btn red" onclick="nmRetire('${nodeId}')">🚫 退役</button>
+      <button class="nm-action-btn gray" onclick="nmShowBackups('${nodeId}')">📂 查看备份</button>
+      <button class="nm-action-btn blue" onclick="nmAction('${nodeId}','doctor','🩺 Doctor')">🩺 Doctor</button>
+      <button class="nm-action-btn purple" onclick="nmOpenSub('${nodeId}')">🔑 订阅</button>
+      <button class="nm-action-btn gray" onclick="nmOpenLogs('${nodeId}')">📋 日志</button>
+    </div>
+    <div class="nm-info">
+      <span>💾 磁盘: ${n.diskUsage || "N/A"}</span>
+      <span>🌐 Gateway: ${n.gatewayPort || "N/A"}</span>
+      <span>🔗 SSH: ${n.sshUser || ""}@${n.host}:${n.sshPort || 22}</span>
+    </div>
+    <div class="nm-bot-list">
+      ${bots.length ? bots.map(b => `<div class="nm-bot">
+        <span class="nm-bot-name">${b.name || b.id}</span>
+        <span class="nm-bot-meta">${b.channel || ""} · ${b.model || ""}</span>
+        <div class="nm-bot-actions">
+          <button title="备份" onclick="nmBotAction('${nodeId}','${b.id}','backup','💾 备份Bot ${b.id}')">💾</button>
+          <button title="还原" onclick="nmBotRestore('${nodeId}','${b.id}')">📥</button>
+          <button title="删除" onclick="nmBotDelete('${nodeId}','${b.id}')">🗑️</button>
+        </div>
+      </div>`).join("") : '<div style="color:var(--muted);font-size:13px;padding:8px;">暂无Bot</div>'}
+    </div>`;
+}
+
+function nmToggleNode(nodeId) {
+  if (nmExpandedId === nodeId) {
+    nmExpandedId = null; nmExpandedDetail = null;
+    clearInterval(nmDetailRefresh); nmDetailRefresh = null;
+    nmRenderAll(); return;
+  }
+  nmExpandedId = nodeId;
+  nmExpandedDetail = null;
+  nmRenderAll();
+  nmFetchDetail(nodeId);
+  clearInterval(nmDetailRefresh);
+  nmDetailRefresh = setInterval(() => { if (nmExpandedId) nmFetchDetail(nmExpandedId); }, 30000);
+}
+
+// --- SSE Actions ---
+async function nmSSE(url, method, body, title, onDone) {
+  nmShowOpLog(title);
+  try {
+    const opts = { method: method || "POST", headers: { "Accept": "text/event-stream", "Content-Type": "application/json" } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n"); buf = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try { nmAddOpStep(JSON.parse(line.slice(6))); } catch(e) {}
+        }
+      }
+    }
+  } catch(e) { nmAddOpStep({ step: 0, total: 0, message: "错误: " + e.message, status: "error" }); }
+  if (onDone) onDone();
+}
+
+function nmAction(nodeId, action, title) {
+  nmSSE(NM_API + "/nodes/" + nodeId + "/" + action, "POST", null, title + " - " + nodeId, () => { nmFetchNodes(); if (nmExpandedId === nodeId) nmFetchDetail(nodeId); });
+}
+
+function nmRetire(nodeId) {
+  nmShowConfirm("🚫 退役节点", `确定要退役节点 <b>${nodeId}</b> 吗？此操作不可逆。请输入节点ID确认：`, nodeId, () => {
+    nmSSE(NM_API + "/nodes/" + nodeId + "/retire", "POST", null, "🚫 退役 " + nodeId, nmFetchNodes);
+  });
+}
+
+function nmRestore(nodeId, botId) {
+  document.getElementById("nmRestoreNodeId").value = nodeId;
+  document.getElementById("nmRestoreBotId").value = botId || "";
+  const url = botId ? NM_API + "/nodes/" + nodeId + "/bots/" + botId + "/backups" : NM_API + "/nodes/" + nodeId + "/backups";
+  fetch(url).then(r => r.json()).then(d => {
+    const files = (d.output || "").trim().split("\n").filter(Boolean);
+    document.getElementById("nmRestoreList").innerHTML = files.length ?
+      files.map(f => `<div class="nm-backup-item" onclick="nmDoRestore('${f}')">${f}</div>`).join("") :
+      '<div style="color:var(--muted);padding:12px;">无备份文件</div>';
+    document.getElementById("nmRestoreModal").style.display = "flex";
+  }).catch(e => alert("获取备份列表失败"));
+}
+
+function nmDoRestore(filename) {
+  nmCloseModal("nmRestoreModal");
+  const nodeId = document.getElementById("nmRestoreNodeId").value;
+  const botId = document.getElementById("nmRestoreBotId").value;
+  const title = botId ? "📦 还原Bot " + botId : "📦 还原 " + nodeId;
+  nmShowConfirm(title, `确定要还原 <b>${filename}</b> 吗？`, null, () => {
+    const url = botId ? NM_API + "/nodes/" + nodeId + "/bots/" + botId + "/restore" : NM_API + "/nodes/" + nodeId + "/restore";
+    nmSSE(url, "POST", { filename }, title, () => { nmFetchNodes(); if (nmExpandedId === nodeId) nmFetchDetail(nodeId); });
+  });
+}
+
+// --- Bot Actions ---
+function nmBotAction(nodeId, botId, action, title) {
+  nmSSE(NM_API + "/nodes/" + nodeId + "/bots/" + botId + "/" + action, "POST", null, title, () => { if (nmExpandedId === nodeId) nmFetchDetail(nodeId); });
+}
+function nmBotRestore(nodeId, botId) { nmRestore(nodeId, botId); }
+function nmBotDelete(nodeId, botId) {
+  nmShowConfirm("🗑️ 删除Bot", `确定要删除 <b>${botId}</b> 吗？请输入Bot ID确认：`, botId, () => {
+    nmSSE(NM_API + "/nodes/" + nodeId + "/bots/" + botId + "/delete", "POST", null, "🗑️ 删除 " + botId, () => { nmFetchNodes(); if (nmExpandedId === nodeId) nmFetchDetail(nodeId); });
+  });
+}
+
+// --- Operation Log ---
+function nmShowOpLog(title) {
+  document.getElementById("nmOplogTitle").textContent = title;
+  document.getElementById("nmOplogBody").innerHTML = "";
+  document.getElementById("nmOplogOverlay").style.display = "block";
+}
+function nmCloseOpLog() { document.getElementById("nmOplogOverlay").style.display = "none"; }
+function nmAddOpStep(data) {
+  const el = document.getElementById("nmOplogBody");
+  const statusIcon = { done: "✅", running: "⏳", error: "❌", skipped: "⏭️" }[data.status] || "▪️";
+  const step = document.createElement("div");
+  step.className = "nm-oplog-step " + (data.status || "");
+  step.textContent = data.step && data.total ? `[Step ${data.step}/${data.total}] ${statusIcon} ${data.message}` : `${statusIcon} ${data.message}`;
+  el.appendChild(step);
+  el.scrollTop = el.scrollHeight;
+}
+
+// --- Confirm Modal ---
+function nmShowConfirm(title, msg, requireInput, callback) {
+  document.getElementById("nmConfirmTitle").textContent = title;
+  document.getElementById("nmConfirmMsg").innerHTML = msg;
+  const inputWrap = document.getElementById("nmConfirmInputWrap");
+  const input = document.getElementById("nmConfirmInput");
+  const btn = document.getElementById("nmConfirmBtn");
+  if (requireInput) {
+    inputWrap.style.display = "block";
+    document.getElementById("nmConfirmInputLabel").textContent = "请输入 " + requireInput + " 确认";
+    input.value = "";
+    btn.disabled = true;
+    input.oninput = () => { btn.disabled = input.value !== requireInput; };
+  } else {
+    inputWrap.style.display = "none"; btn.disabled = false;
+  }
+  nmConfirmCallback = callback;
+  document.getElementById("nmConfirmModal").style.display = "flex";
+}
+function nmCloseConfirm() { document.getElementById("nmConfirmModal").style.display = "none"; nmConfirmCallback = null; }
+function nmDoConfirm() { const cb = nmConfirmCallback; nmCloseConfirm(); if (cb) cb(); }
+
+// --- Add Node ---
+function nmOpenAddNode() { document.getElementById("nmAddNodeForm").reset(); document.getElementById("nmAddNodeModal").style.display = "flex"; }
+function nmSubmitAddNode(e) {
+  e.preventDefault(); nmCloseModal("nmAddNodeModal");
+  const body = {
+    id: document.getElementById("nmNodeId").value, name: document.getElementById("nmNodeName").value,
+    host: document.getElementById("nmNodeHost").value, sshUser: document.getElementById("nmNodeSshUser").value,
+    sshPort: parseInt(document.getElementById("nmNodeSshPort").value) || 22,
+    ocPath: document.getElementById("nmNodeOcPath").value || undefined,
+    gatewayPort: parseInt(document.getElementById("nmNodeGwPort").value) || 18789,
+    authToken: document.getElementById("nmNodeAuthToken").value || undefined,
+  };
+  nmSSE(NM_API + "/nodes/add", "POST", body, "🔧 添加节点 " + body.id, nmFetchNodes);
+}
+
+// --- Add Bot ---
+function nmOpenAddBot(nodeId) { document.getElementById("nmAddBotForm").reset(); document.getElementById("nmAddBotNodeId").value = nodeId; document.getElementById("nmBotModel").value = "claude-sonnet-4-20250514"; document.getElementById("nmBotChannel").value = "telegram"; document.getElementById("nmAddBotModal").style.display = "flex"; }
+function nmSubmitAddBot(e) {
+  e.preventDefault(); const nodeId = document.getElementById("nmAddBotNodeId").value; nmCloseModal("nmAddBotModal");
+  const body = {
+    botId: document.getElementById("nmBotId").value, botName: document.getElementById("nmBotName").value || undefined,
+    botToken: document.getElementById("nmBotToken").value || undefined, model: document.getElementById("nmBotModel").value || undefined,
+    channel: document.getElementById("nmBotChannel").value || undefined, authToken: document.getElementById("nmBotAuthToken").value || undefined,
+    soul: document.getElementById("nmBotSoul").value || undefined,
+  };
+  nmSSE(NM_API + "/nodes/" + nodeId + "/bots/add", "POST", body, "🤖 添加Bot " + body.botId, () => { nmFetchNodes(); if (nmExpandedId === nodeId) nmFetchDetail(nodeId); });
+}
+
+// --- Subscription ---
+function nmOpenSub(nodeId) { document.getElementById("nmSubNodeId").value = nodeId; document.getElementById("nmSubToken").value = ""; document.getElementById("nmSubModal").style.display = "flex"; }
+function nmSubmitSub() {
+  const nodeId = document.getElementById("nmSubNodeId").value;
+  const token = document.getElementById("nmSubToken").value; nmCloseModal("nmSubModal");
+  nmSSE(NM_API + "/nodes/" + nodeId + "/subscription", "POST", { token }, "🔑 设置订阅 " + nodeId);
+}
+
+// --- Backup List ---
+async function nmShowBackups(nodeId) {
+  const body = document.getElementById("nmBackupListBody");
+  body.innerHTML = "加载中...";
+  document.getElementById("nmBackupListModal").style.display = "flex";
+  try {
+    const r = await fetch(NM_API + "/nodes/" + nodeId + "/backup-list");
+    const d = await r.json();
+    if (d.success && d.files && d.files.length) {
+      body.innerHTML = d.files.map(f => `<div class="nm-backup-item">
+        <span class="nm-backup-badge ${f.type || 'node'}">${f.type || 'node'}</span>
+        <span class="nm-backup-info">${f.name}${f.botId ? " (" + f.botId + ")" : ""}</span>
+        <span class="nm-backup-size">${f.sizeStr || ""} · ${f.mtime ? new Date(f.mtime).toLocaleString("zh-CN") : ""}</span>
+      </div>`).join("");
+    } else {
+      body.innerHTML = '<div style="color:var(--muted);padding:12px;">无备份文件</div>';
+    }
+  } catch(e) { body.innerHTML = '<div style="color:var(--red);">加载失败</div>'; }
+}
+
+// --- Logs ---
+function nmOpenLogs(nodeId) {
+  nmLogsNodeId = nodeId;
+  document.getElementById("nmLogsBody").textContent = "加载中...";
+  document.getElementById("nmLogsModal").style.display = "flex";
+  document.getElementById("nmLiveIndicator").style.display = "none";
+  document.getElementById("nmStreamBtn").textContent = "▶ 实时";
+  nmFetchLogs();
+}
+async function nmFetchLogs() {
+  if (!nmLogsNodeId) return;
+  nmStopLogStream();
+  const lines = document.getElementById("nmLogsLines").value;
+  try {
+    const r = await fetch(NM_API + "/nodes/" + nmLogsNodeId + "/logs?lines=" + lines);
+    const d = await r.json();
+    const el = document.getElementById("nmLogsBody");
+    el.textContent = d.success ? (d.logs || "无日志") : "加载失败";
+    el.scrollTop = el.scrollHeight;
+  } catch(e) { document.getElementById("nmLogsBody").textContent = "加载失败: " + e.message; }
+}
+function nmStreamLogs() {
+  if (nmLogsReader) { nmStopLogStream(); return; }
+  if (!nmLogsNodeId) return;
+  document.getElementById("nmLiveIndicator").style.display = "inline";
+  document.getElementById("nmStreamBtn").textContent = "⏹ 停止";
+  const el = document.getElementById("nmLogsBody");
+  fetch(NM_API + "/nodes/" + nmLogsNodeId + "/logs/stream", { headers: { "Accept": "text/event-stream" } })
+    .then(res => {
+      nmLogsReader = res.body.getReader();
+      const dec = new TextDecoder(); let buf = "";
+      function read() {
+        nmLogsReader.read().then(({ done, value }) => {
+          if (done) { nmStopLogStream(); return; }
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n"); buf = lines.pop();
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const d = JSON.parse(line.slice(6));
+                if (d.line) { el.textContent += d.line + "\n"; el.scrollTop = el.scrollHeight; }
+                if (d.done || d.error) { nmStopLogStream(); }
+              } catch(e) {}
+            }
+          }
+          read();
+        }).catch(() => nmStopLogStream());
+      }
+      read();
+    }).catch(() => nmStopLogStream());
+}
+function nmStopLogStream() {
+  if (nmLogsReader) { try { nmLogsReader.cancel(); } catch(e) {} nmLogsReader = null; }
+  document.getElementById("nmLiveIndicator").style.display = "none";
+  document.getElementById("nmStreamBtn").textContent = "▶ 实时";
+}
+function nmCloseLogs() {
+  nmStopLogStream(); nmLogsNodeId = null;
+  document.getElementById("nmLogsModal").style.display = "none";
+}
+
+// --- Helpers ---
+function nmCloseModal(id) { document.getElementById(id).style.display = "none"; }
+
+// --- Init & Auto-refresh ---
+function nmInit() { nmFetchNodes(); nmAutoRefresh = setInterval(nmFetchNodes, 30000); }
+
+// Hook into view switching
+const origShowView = showView;
+showView = function(viewName) {
+  origShowView(viewName);
+  if (viewName === "nodes") { nmInit(); }
+  else { clearInterval(nmAutoRefresh); clearInterval(nmDetailRefresh); nmAutoRefresh = null; nmDetailRefresh = null; }
+};
+</script>
+</body>
+</html>

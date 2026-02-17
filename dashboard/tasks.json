@@ -1,0 +1,520 @@
+{
+  "date": "2026-02-17",
+  "generatedAt": "2026-02-17T11:00:20.504344",
+  "projects": [
+    {
+      "id": "docomo",
+      "name": "Docomo 項目",
+      "emoji": "🔧",
+      "tasks": [
+        {
+          "title": "代码学习（暂无紧急任务）",
+          "done": false,
+          "status": "doing",
+          "priority": "P3",
+          "due": "2026-02-28",
+          "assignee": "docomo-pj",
+          "doneDate": null
+        },
+        {
+          "title": "项目环境初始化",
+          "done": true,
+          "status": "done",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": "2026-02-08"
+        }
+      ]
+    },
+    {
+      "id": "flect",
+      "name": "Flect",
+      "emoji": "⚡",
+      "tasks": [
+        {
+          "title": "DB 設計",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-13",
+          "assignee": "flect",
+          "doneDate": "2026-02-10"
+        },
+        {
+          "title": "Pipeline 設計",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-13",
+          "assignee": "flect",
+          "doneDate": "2026-02-10"
+        },
+        {
+          "title": "资料整理入AI",
+          "done": false,
+          "status": "doing",
+          "priority": "P2",
+          "due": "2026-02-19",
+          "assignee": null,
+          "doneDate": null
+        },
+        {
+          "title": "环境确认1",
+          "done": false,
+          "status": "doing",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": null
+        },
+        {
+          "title": "环境确认2",
+          "done": false,
+          "status": "doing",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": null
+        }
+      ]
+    },
+    {
+      "id": "laboro",
+      "name": "Laboro",
+      "emoji": "🧪",
+      "tasks": [
+        {
+          "title": "Container PoC",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-13",
+          "assignee": "laboro",
+          "doneDate": "2026-02-12"
+        },
+        {
+          "title": "C领域开発",
+          "done": false,
+          "status": "todo",
+          "priority": "P2",
+          "due": null,
+          "assignee": "laboro",
+          "doneDate": null
+        },
+        {
+          "title": "Container开发",
+          "done": false,
+          "status": "todo",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": null
+        }
+      ]
+    },
+    {
+      "id": "mcd-3",
+      "name": "MCD-3",
+      "emoji": "☁️",
+      "tasks": [
+        {
+          "title": "CloudFunction 开发",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-14",
+          "assignee": "linou",
+          "doneDate": "2026-02-10"
+        },
+        {
+          "title": "Dashboard 开发",
+          "done": false,
+          "status": "doing",
+          "priority": "P2",
+          "due": "2026-02-14",
+          "assignee": "linou",
+          "doneDate": null
+        }
+      ]
+    },
+    {
+      "id": "nobdata",
+      "name": "Nobdata",
+      "emoji": "📊",
+      "tasks": [
+        {
+          "title": "Weekly report 开発・発布",
+          "done": false,
+          "status": "doing",
+          "priority": "P2",
+          "due": null,
+          "assignee": "nobdata",
+          "doneDate": null
+        },
+        {
+          "title": "周会推送openclaw/Slack-AskMe",
+          "done": true,
+          "status": "done",
+          "priority": "P2",
+          "due": "2026-02-10",
+          "assignee": null,
+          "doneDate": "2026-02-10"
+        }
+      ]
+    },
+    {
+      "id": "personal",
+      "name": "个人事務",
+      "emoji": "🏠",
+      "tasks": [
+        {
+          "title": "OpenClaw 多 Agent 路由调试",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-09",
+          "assignee": "joe",
+          "doneDate": "2026-02-10"
+        },
+        {
+          "title": "任务管理系统搭建",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-12",
+          "assignee": "joe",
+          "doneDate": "2026-02-10"
+        },
+        {
+          "title": "投资组合月度 review",
+          "done": true,
+          "status": "done",
+          "priority": "P2",
+          "due": "2026-02-15",
+          "assignee": null,
+          "doneDate": "2026-02-13"
+        },
+        {
+          "title": "Jingxuan 学习计划 Week2 检查",
+          "done": true,
+          "status": "done",
+          "priority": "P2",
+          "due": "2026-02-10",
+          "assignee": null,
+          "doneDate": "2026-02-10"
+        },
+        {
+          "title": "OpenClaw 平台迁移",
+          "done": true,
+          "status": "done",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": "2026-02-08"
+        },
+        {
+          "title": "TTS 语音配置",
+          "done": true,
+          "status": "done",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": "2026-02-09"
+        },
+        {
+          "title": "Brave Search 配置",
+          "done": true,
+          "status": "done",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": "2026-02-09"
+        },
+        {
+          "title": "各Agent训练规划（技能定义+知识库）",
+          "done": true,
+          "status": "done",
+          "priority": "P2",
+          "due": "2026-02-16",
+          "assignee": "joe",
+          "doneDate": "2026-02-12"
+        }
+      ]
+    },
+    {
+      "id": "royal",
+      "name": "Royal 数据平台",
+      "emoji": "🚀",
+      "tasks": [
+        {
+          "title": "Logistics Unit Test",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-10",
+          "assignee": "royal-pj",
+          "doneDate": "2026-02-09"
+        },
+        {
+          "title": "Hive migration (dev)",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-10",
+          "assignee": "royal-pj",
+          "doneDate": "2026-02-09"
+        },
+        {
+          "title": "VCO Notice 开发",
+          "done": false,
+          "status": "doing",
+          "priority": "P1",
+          "due": "2026-02-13",
+          "assignee": "royal-pj",
+          "doneDate": null
+        },
+        {
+          "title": "MDM Oracle 开发",
+          "done": false,
+          "status": "todo",
+          "priority": "P2",
+          "due": "2026-02-20",
+          "assignee": "royal-pj",
+          "doneDate": null
+        },
+        {
+          "title": "AD Group Sync",
+          "done": false,
+          "status": "todo",
+          "priority": "P2",
+          "due": "2026-02-27",
+          "assignee": "royal-pj",
+          "doneDate": null
+        },
+        {
+          "title": "ETL 脚本重构",
+          "done": true,
+          "status": "done",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": "2026-02-08"
+        }
+      ]
+    },
+    {
+      "id": "techsfree",
+      "name": "techsfree",
+      "emoji": "📁",
+      "tasks": [
+        {
+          "title": "Freee上传功能完善・分享给朋友",
+          "done": false,
+          "status": "todo",
+          "priority": "P2",
+          "due": "2026-02-14",
+          "assignee": "techsfree-fr",
+          "doneDate": null
+        },
+        {
+          "title": "周会推送openclaw/Slack-AskMe",
+          "done": true,
+          "status": "done",
+          "priority": "P1",
+          "due": "2026-02-19",
+          "assignee": null,
+          "doneDate": "2026-02-14"
+        },
+        {
+          "title": "网页改造（添加业务模块）",
+          "done": false,
+          "status": "todo",
+          "priority": "P2",
+          "due": "2026-02-14",
+          "assignee": null,
+          "doneDate": null
+        },
+        {
+          "title": "ERP系统最终测试反馈",
+          "done": false,
+          "status": "todo",
+          "priority": null,
+          "due": null,
+          "assignee": null,
+          "doneDate": null
+        }
+      ]
+    },
+    {
+      "id": "videos",
+      "name": "videos",
+      "emoji": "📁",
+      "tasks": [
+        {
+          "title": "视频制作 Post（Cho初试）",
+          "done": true,
+          "status": "done",
+          "priority": "P2",
+          "due": "2026-02-15",
+          "assignee": "youtube-cho",
+          "doneDate": "2026-02-13"
+        }
+      ]
+    }
+  ],
+  "meetings": [
+    {
+      "time": "00:00",
+      "endTime": "00:00",
+      "title": "🏫 Mid-Winter Break",
+      "duration": "7200min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgBGAAADibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAJb1yeYAAAAA==",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "09:00",
+      "endTime": "09:15",
+      "title": "LAB-Daily",
+      "duration": "15min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN7cwAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "10:00",
+      "endTime": "11:00",
+      "title": "Docomo会议",
+      "duration": "60min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN6zwAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "10:30",
+      "endTime": "11:00",
+      "title": "Flect朝会",
+      "duration": "30min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TO1wgAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "11:00",
+      "endTime": "12:00",
+      "title": "Docomo会議",
+      "duration": "60min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN68wAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "13:30",
+      "endTime": "14:00",
+      "title": "MCD3会议",
+      "duration": "30min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN7TQAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "14:30",
+      "endTime": "14:45",
+      "title": "Royal会議",
+      "duration": "15min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN7fAAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "16:00",
+      "endTime": "17:00",
+      "title": "Docomo会議",
+      "duration": "60min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN69AAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "16:30",
+      "endTime": "17:00",
+      "title": "NobData会議",
+      "duration": "30min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN7TAAAABA=",
+      "calendar": "Hotmail"
+    },
+    {
+      "time": "21:00",
+      "endTime": "21:15",
+      "title": "Docomo/Flect日報",
+      "duration": "15min",
+      "location": "",
+      "id": "AQMkADAwATY3ZmYAZS05YTBiLTM2ODAtMDACLTAwCgFRAAgIAN5tt35iQABGAAACibZyoUPgBUOFj4Gtszm4FwcAmjfBjYw8hUmogEAWKTjJEwAAAgENAAAAmjfBjYw8hUmogEAWKTjJEwAG8TN7WwAAABA=",
+      "calendar": "Hotmail"
+    }
+  ],
+  "timeline": [
+    {
+      "time": "00:00",
+      "desc": "🏫 Mid-Winter Break",
+      "project": "Hotmail"
+    },
+    {
+      "time": "04:30",
+      "desc": "起床・开始工作",
+      "project": ""
+    },
+    {
+      "time": "09:00",
+      "desc": "LAB-Daily",
+      "project": "Hotmail"
+    },
+    {
+      "time": "10:00",
+      "desc": "Docomo会议",
+      "project": "Hotmail"
+    },
+    {
+      "time": "10:30",
+      "desc": "Flect朝会",
+      "project": "Hotmail"
+    },
+    {
+      "time": "11:00",
+      "desc": "Docomo会議",
+      "project": "Hotmail"
+    },
+    {
+      "time": "13:30",
+      "desc": "MCD3会议",
+      "project": "Hotmail"
+    },
+    {
+      "time": "14:30",
+      "desc": "Royal会議",
+      "project": "Hotmail"
+    },
+    {
+      "time": "16:00",
+      "desc": "Docomo会議",
+      "project": "Hotmail"
+    },
+    {
+      "time": "16:30",
+      "desc": "NobData会議",
+      "project": "Hotmail"
+    },
+    {
+      "time": "21:00",
+      "desc": "Docomo/Flect日報",
+      "project": "Hotmail"
+    },
+    {
+      "time": "21:00",
+      "desc": "休息",
+      "project": ""
+    }
+  ]
+}
