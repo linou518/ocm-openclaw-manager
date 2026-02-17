@@ -13,7 +13,6 @@ import BotControl from './pages/BotControl';
 import Audit from './pages/Audit';
 import CronJobs from './pages/CronJobs';
 import Optimizations from './pages/Optimizations';
-import OcmNodeManager from './pages/OcmNodeManager';
 
 function AppContent() {
   const location = useLocation();
@@ -24,7 +23,6 @@ function AppContent() {
     { path: '/', label: 'Dashboard', icon: '🏠' },
     { path: '/bot-control', label: 'Bot控制', icon: '🤖' },
     { path: '/nodes', label: '节点', icon: '🖥️' },
-    { path: '/node-manager', label: '节点管理', icon: '🔧' },
     { path: '/keys', label: 'Keys', icon: '🔑' },
     { path: '/cron-jobs', label: 'Cron Jobs', icon: '⏰' },
     { path: '/optimizations', label: '优化部署', icon: '🚀' },
@@ -204,7 +202,6 @@ function AppContent() {
               <Route path="/events" element={<Events />} />
               <Route path="/audit" element={<Audit />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/node-manager" element={<OcmNodeManager />} />
             </Routes>
           </div>
         </main>

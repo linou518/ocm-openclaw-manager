@@ -1,0 +1,108 @@
+{
+  "nodes": [
+    {
+      "id": "pc-a",
+      "name": "PC-A (主机)",
+      "host": "192.168.3.73",
+      "sshPort": 22,
+      "sshUser": "openclaw01",
+      "ocPath": "/home/openclaw01/.openclaw",
+      "gatewayPort": 18789
+    },
+    {
+      "id": "t440",
+      "name": "T440 (工作服务器)",
+      "host": "192.168.3.33",
+      "sshPort": 22,
+      "sshUser": "linou",
+      "ocPath": "/home/linou/.openclaw",
+      "gatewayPort": 18788
+    },
+    {
+      "id": "baota",
+      "name": "宝塔服务器",
+      "host": "192.168.3.11",
+      "sshPort": 22,
+      "sshUser": "linou",
+      "ocPath": "/home/linou/.openclaw",
+      "gatewayPort": 18789
+    },
+    {
+      "id": "pc-bb",
+      "name": "pc-bb",
+      "host": "192.168.3.17",
+      "sshUser": "openclaw02",
+      "sshPort": 22,
+      "ocPath": "/home/openclaw02/.openclaw",
+      "gatewayPort": 18789
+    }
+  ],
+  "retired": [
+    {
+      "id": "pc-b",
+      "name": "PC-B (备机)",
+      "host": "192.168.3.17",
+      "sshUser": "openclaw02",
+      "sshPort": 22,
+      "ocPath": "/home/openclaw02/.openclaw",
+      "gatewayPort": 18789,
+      "retiredAt": "2026-02-17T06:53:04.174764",
+      "errors": null
+    },
+    {
+      "id": "pc-b",
+      "name": "PC-B (备机)",
+      "host": "192.168.3.17",
+      "sshUser": "openclaw02",
+      "sshPort": 22,
+      "ocPath": "/home/openclaw02/.openclaw",
+      "gatewayPort": 18789,
+      "retiredAt": "2026-02-17T08:08:55.097251",
+      "errors": null
+    },
+    {
+      "id": "pc-b",
+      "name": "pc-b",
+      "host": "192.168.3.17",
+      "sshUser": "openclaw02",
+      "sshPort": 22,
+      "ocPath": "/home/openclaw02/.openclaw",
+      "gatewayPort": 18789,
+      "retiredAt": "2026-02-17T08:15:33.983496",
+      "errors": null
+    },
+    {
+      "id": "pc-b",
+      "name": "PC-B (备机)",
+      "host": "192.168.3.17",
+      "sshUser": "openclaw02",
+      "sshPort": 22,
+      "ocPath": "/home/openclaw02/.openclaw",
+      "gatewayPort": 18789,
+      "retiredAt": "2026-02-17T08:19:34.129203",
+      "errors": null
+    },
+    {
+      "id": "pc-b",
+      "name": "pc-b",
+      "host": "192.168.3.17",
+      "sshUser": "openclaw02",
+      "sshPort": 22,
+      "ocPath": "/home/openclaw02/.openclaw",
+      "gatewayPort": 18789,
+      "retiredAt": "2026-02-17T09:16:23.064581",
+      "errors": null
+    },
+    {
+      "id": "pc-b",
+      "name": "pc-b",
+      "host": "192.168.3.17",
+      "sshUser": "openclaw02",
+      "sshPort": 22,
+      "ocPath": "/home/openclaw02/.openclaw",
+      "gatewayPort": 18789,
+      "retiredAt": "2026-02-17T09:34:21.578254",
+      "errors": null
+    }
+  ]
+}

@@ -2,7 +2,6 @@ const express = require('express');
 const { execSync } = require("child_process");
 const nodeManagementRouter = require('./node-management-api');
 const TokenManager = require('./token-manager');
-const ocmNodesRouter = require("./ocm-nodes-api");
 const cors = require('cors');
 const path = require('path');
 const Database = require('better-sqlite3');
@@ -35,7 +34,6 @@ app.use('/api', (req, res, next) => {
 
 // API Routes
 app.use(nodeManagementRouter);
-app.use(ocmNodesRouter);
 
 // Dashboard - 全量数据
 app.get('/api/dashboard', (req, res) => {
